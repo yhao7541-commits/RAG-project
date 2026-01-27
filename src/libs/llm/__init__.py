@@ -7,4 +7,26 @@ This package contains LLM client abstractions and implementations:
 - Provider implementations (OpenAI, Azure, Ollama, DeepSeek)
 """
 
-__all__ = []
+from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.llm.llm_factory import LLMFactory
+from src.libs.llm.openai_llm import OpenAILLM, OpenAILLMError
+from src.libs.llm.azure_llm import AzureLLM, AzureLLMError
+from src.libs.llm.deepseek_llm import DeepSeekLLM, DeepSeekLLMError
+
+# Register providers with factory
+LLMFactory.register_provider("openai", OpenAILLM)
+LLMFactory.register_provider("azure", AzureLLM)
+LLMFactory.register_provider("deepseek", DeepSeekLLM)
+
+__all__ = [
+    "BaseLLM",
+    "ChatResponse",
+    "Message",
+    "LLMFactory",
+    "OpenAILLM",
+    "OpenAILLMError",
+    "AzureLLM",
+    "AzureLLMError",
+    "DeepSeekLLM",
+    "DeepSeekLLMError",
+]
