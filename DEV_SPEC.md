@@ -1298,7 +1298,8 @@ smart-knowledge-hub/
 │   │   │   ├── base_embedding.py        # Embedding 抽象基类
 │   │   │   ├── embedding_factory.py     # Embedding 工厂
 │   │   │   ├── openai_embedding.py      # OpenAI Embedding 实现
-│   │   │   └── local_embedding.py       # 本地模型实现 (BGE/Ollama)
+│   │   │   ├── azure_embedding.py       # Azure Embedding 实现
+│   │   │   └── ollama_embedding.py      # Ollama 本地模型实现
 │   │   │
 │   │   ├── splitter/                    # Splitter 抽象 (切分策略)
 │   │   │   ├── __init__.py
@@ -1554,7 +1555,7 @@ llm:
 
 # Embedding 配置
 embedding:
-  provider: openai          # openai | ollama | local
+  provider: openai          # openai | azure | ollama (本地)
   model: text-embedding-3-small
   
 # Vision LLM 配置 (图片描述)
@@ -1657,7 +1658,7 @@ observability:
 | B7.1 | OpenAI-Compatible LLM 实现 | [x] | 2026-01-28 | OpenAILLM + AzureLLM + DeepSeekLLM + 33个单元测试 |
 | B7.2 | Ollama LLM 实现 | [x] | 2026-01-28 | OllamaLLM + 32个单元测试 |
 | B7.3 | OpenAI & Azure Embedding 实现 | [x] | 2026-01-28 | OpenAIEmbedding + AzureEmbedding + 27个单元测试 |
-| B7.4 | Local Embedding 实现 | [ ] | - | |
+| B7.4 | Ollama Embedding 实现 | [ ] | - | |
 | B7.5 | Recursive Splitter 默认实现 | [ ] | - | |
 | B7.6 | ChromaStore 默认实现 | [ ] | - | |
 | B7.7 | LLM Reranker 实现 | [ ] | - | |
@@ -1911,15 +1912,19 @@ observability:
   - Azure 实现复用 OpenAI Embedding 的核心逻辑，保持行为一致性。
 - **测试方法**：`pytest -q tests/unit/test_embedding_providers_smoke.py`。
 
-### B7.4：Local Embedding 实现（BGE/Ollama 占位）
-- **目标**：补齐 `local_embedding.py` 的默认实现路径（可先做占位/适配层），并在测试中用 Fake 向量保证链路可跑。
+### B7.4：Ollama Embedding 实现
+- **目标**：补齐 `ollama_embedding.py`，支持通过 Ollama HTTP API 调用本地部署的 Embedding 模型（如 `nomic-embed-text`、`mxbai-embed-large` 等），实现 `embed(texts)` 批量向量化功能。
 - **修改文件**：
-  - `src/libs/embedding/local_embedding.py`
-  - `tests/unit/test_local_embedding.py`
+  - `src/libs/embedding/ollama_embedding.py`
+  - `tests/unit/test_ollama_embedding.py`（包含 mock HTTP 测试）
 - **验收标准**：
-  - provider=local 时 `EmbeddingFactory` 可创建。
-  - 输出向量维度稳定（配置化或固定假维度），满足 ingestion/retrieval 的接口契约。
-- **测试方法**：`pytest -q tests/unit/test_local_embedding.py`。
+  - provider=ollama 时 `EmbeddingFactory` 可创建。
+  - 支持配置 Ollama 服务地址（默认 http://localhost:11434）和模型名称。
+  - 输出向量维度由模型决定（如 nomic-embed-text 为 768 维），满足 ingestion/retrieval 的接口契约。
+  - 支持批量 `embed(texts)` 调用，内部处理单条/批量请求逻辑。
+  - 空输入、超长输入有明确行为（报错或截断策略）。
+  - mock 测试覆盖正常响应、连接失败、超时等场景。
+- **测试方法**：`pytest -q tests/unit/test_ollama_embedding.py`。
 
 ### B7.5：Recursive Splitter 默认实现
 - **目标**：补齐 `recursive_splitter.py`，封装 LangChain 的切分逻辑，作为默认切分器。
