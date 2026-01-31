@@ -52,6 +52,7 @@ markers = [
     "unit: Unit tests (fast, no external dependencies)",
     "integration: Integration tests (may require external services)",
     "e2e: End-to-end tests (full system tests)",
+    "llm: marks tests that require real LLM API calls (deselect with '-m \"not llm\"')",
     "slow: Slow tests that should be run less frequently",
 ]
 addopts = "-v --tb=short"

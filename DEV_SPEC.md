@@ -1700,7 +1700,7 @@ observability:
 | C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-01-30 | BaseLoader + PdfLoader + PyMuPDF图片提取 + 21单元测试 + 9集成测试 |
 | C4 | Splitter 集成（调用 Libs） | [x] | 2026-01-31 | DocumentChunker + 19个单元测试 + 5个核心增值功能 |
 | C5 | Transform 基类 + ChunkRefiner | [x] | 2026-01-31 | BaseTransform + ChunkRefiner (Rule + LLM) + TraceContext + 25单元测试 + 5集成测试 |
-| C6 | MetadataEnricher | [ ] | - | |
+| C6 | MetadataEnricher | [x] | 2026-01-31 | MetadataEnricher (Rule + LLM) + 26单元测试 + 真实LLM集成测试 |
 | C7 | ImageCaptioner | [ ] | - | |
 | C8 | DenseEncoder | [ ] | - | |
 | C9 | SparseEncoder | [ ] | - | |
@@ -1761,12 +1761,12 @@ observability:
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
 | 阶段 B | 14 | 14 | 100% |
-| 阶段 C | 15 | 5 | 33% |
+| 阶段 C | 15 | 6 | 40% |
 | 阶段 D | 7 | 0 | 0% |
 | 阶段 E | 6 | 0 | 0% |
 | 阶段 F | 5 | 0 | 0% |
 | 阶段 G | 4 | 0 | 0% |
-| **总计** | **54** | **22** | **41%** |
+| **总计** | **54** | **23** | **43%** |
 
 
 ---
@@ -2176,15 +2176,15 @@ observability:
     - 两者互补，缺一不可
 
 ### C6：MetadataEnricher（规则增强 + 可选 LLM 增强 + 降级）
-- **目标**：实现元数据增强模块：提供规则增强的默认实现（例如从 chunk 文本抽取/推断 title、生成简短 summary、打 tags），并支持可选 LLM 增强（可配置开关 + 失败降级，不阻塞 ingestion）。
+- **目标**：实现元数据增强模块：提供规则增强的默认实现，并重点支持 LLM 增强（配置已就绪，LLM 开关打开）。利用 LLM 对 chunk 进行高质量的 title 生成、summary 摘要和 tags 提取。同时保留失败降级机制，确保不阻塞 ingestion。
 - **修改文件**：
   - `src/ingestion/transform/metadata_enricher.py`
   - `tests/unit/test_metadata_enricher_contract.py`
 - **验收标准**：
-  - 规则模式：输出 metadata 必须包含 `title/summary/tags`，且 `title`/`summary` 至少为非空字符串（fixtures 断言）。
-  - LLM 模式：启用 LLM 时会调用一次增强逻辑，并将结果写回 metadata（测试中用 mock LLM 断言调用与输出）。
+  - 规则模式：作为兜底逻辑，输出 metadata 必须包含 `title/summary/tags`（至少非空）。
+  - **LLM 模式（核心）**：在 LLM 打开的情况下，确保真实调用 LLM（或高质量 Mock）并生成语义丰富的 metadata。需验证在有真实 LLM 配置下的连通性与效果。
   - 降级行为：LLM 调用失败时回退到规则模式结果（可在 metadata 标记降级原因，但不抛出致命异常）。
-- **测试方法**：`pytest -q tests/unit/test_metadata_enricher_contract.py`。
+- **测试方法**：`pytest -q tests/unit/test_metadata_enricher_contract.py`，并确保包含开启 LLM 的集成测试用例。
 
 ### C7：ImageCaptioner（可选生成 caption + 降级不阻塞）
 - **目标**：实现 `image_captioner.py`：当启用 Vision LLM 且存在 image_refs 时生成 caption 并写回 chunk metadata；当禁用/不可用/异常时走降级路径，不阻塞 ingestion。

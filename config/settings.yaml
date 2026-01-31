@@ -9,9 +9,9 @@ llm:
   provider: "azure"  # Options: openai, azure, ollama, deepseek
   model: "gpt-4o"
   deployment_name: "gpt-4o"
-  azure_endpoint: "YOUR_AZURE_ENDPOINT"
+  azure_endpoint: ""  # Set your Azure OpenAI endpoint here
   api_version: "2024-02-15-preview"
-  api_key: "YOUR_API_KEY"
+  api_key: ""  # Set your Azure OpenAI API key here or use AZURE_OPENAI_API_KEY env var
   temperature: 0.0
   max_tokens: 4096
 
