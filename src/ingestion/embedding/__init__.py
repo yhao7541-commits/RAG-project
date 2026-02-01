@@ -7,4 +7,7 @@ This package contains embedding components:
 - Batch processor
 """
 
-__all__ = []
+from src.ingestion.embedding.dense_encoder import DenseEncoder
+from src.ingestion.embedding.sparse_encoder import SparseEncoder
+
+__all__ = ["DenseEncoder", "SparseEncoder"]
