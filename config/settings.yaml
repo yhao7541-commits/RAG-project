@@ -19,9 +19,15 @@ llm:
 # Embedding Configuration
 # =============================================================================
 embedding:
-  provider: "openai"  # Options: openai, local
-  model: "text-embedding-3-small"
-  dimensions: 1536
+  provider: "azure"  # Options: openai, azure, ollama
+  model: "text-embedding-ada-002"
+  dimensions: 1536  # text-embedding-ada-002 固定维度 (不传递给API, 仅用于验证)
+  # Azure-specific settings (if provider is azure):
+  azure_endpoint: ""  # Set your Azure OpenAI endpoint here
+  deployment_name: "text-embedding-ada-002"
+  api_version: "2024-02-15-preview"
+  api_key: ""  # Set your Azure OpenAI API key here or use AZURE_OPENAI_API_KEY env var
+  # OpenAI-specific settings (if provider is openai):
   # api_key: ${OPENAI_API_KEY}
 
 # =============================================================================

@@ -69,29 +69,29 @@ class AzureEmbedding(BaseEmbedding):
         # Extract optional dimensions setting
         self.dimensions = getattr(settings.embedding, 'dimensions', None)
         
-        # API key: explicit > env var AZURE_OPENAI_API_KEY > OPENAI_API_KEY (fallback)
+        # API key: explicit parameter > settings.yaml > env var (fallback for backward compatibility)
         self.api_key = (
             api_key or 
+            getattr(settings.embedding, 'api_key', None) or
             os.environ.get("AZURE_OPENAI_API_KEY") or
             os.environ.get("OPENAI_API_KEY")
         )
         if not self.api_key:
             raise ValueError(
-                "Azure OpenAI API key not provided. Set AZURE_OPENAI_API_KEY "
-                "environment variable or pass api_key parameter."
+                "Azure OpenAI API key not provided. Configure 'api_key' in settings.yaml, "
+                "set AZURE_OPENAI_API_KEY environment variable, or pass api_key parameter."
             )
         
-        # Azure endpoint: explicit > env var > settings
+        # Azure endpoint: explicit parameter > settings.yaml > env var (fallback)
         self.azure_endpoint = (
             azure_endpoint or
-            os.environ.get("AZURE_OPENAI_ENDPOINT") or
-            getattr(settings.embedding, 'azure_endpoint', None)
+            getattr(settings.embedding, 'azure_endpoint', None) or
+            os.environ.get("AZURE_OPENAI_ENDPOINT")
         )
         if not self.azure_endpoint:
             raise ValueError(
-                "Azure OpenAI endpoint not provided. Set AZURE_OPENAI_ENDPOINT "
-                "environment variable, configure 'azure_endpoint' in settings.yaml, "
-                "or pass azure_endpoint parameter."
+                "Azure OpenAI endpoint not provided. Configure 'azure_endpoint' in settings.yaml, "
+                "set AZURE_OPENAI_ENDPOINT environment variable, or pass azure_endpoint parameter."
             )
         
         # API version: explicit > settings > default
@@ -151,9 +151,10 @@ class AzureEmbedding(BaseEmbedding):
             "model": self.deployment_name,
         }
         
-        # Add dimensions if specified (only for text-embedding-3-* deployments)
+        # Add dimensions if specified (only for text-embedding-3-* models)
+        # text-embedding-ada-002 does NOT support dimensions parameter
         dimensions = kwargs.get("dimensions", self.dimensions)
-        if dimensions is not None:
+        if dimensions is not None and "text-embedding-3" in self.deployment_name.lower():
             api_params["dimensions"] = dimensions
         
         # Call Azure OpenAI API

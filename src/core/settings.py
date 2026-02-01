@@ -76,6 +76,13 @@ class EmbeddingSettings:
     provider: str
     model: str
     dimensions: int
+    # Azure-specific optional fields
+    api_key: Optional[str] = None
+    api_version: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    deployment_name: Optional[str] = None
+    # Ollama-specific optional fields
+    base_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +205,11 @@ class Settings:
                 provider=_require_str(embedding, "provider", "embedding"),
                 model=_require_str(embedding, "model", "embedding"),
                 dimensions=_require_int(embedding, "dimensions", "embedding"),
+                api_key=embedding.get("api_key"),
+                api_version=embedding.get("api_version"),
+                azure_endpoint=embedding.get("azure_endpoint"),
+                deployment_name=embedding.get("deployment_name"),
+                base_url=embedding.get("base_url"),
             ),
             vector_store=VectorStoreSettings(
                 provider=_require_str(vector_store, "provider", "vector_store"),

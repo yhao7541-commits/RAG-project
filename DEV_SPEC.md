@@ -1709,8 +1709,8 @@ observability:
 | C4 | Splitter 集成（调用 Libs） | [x] | 2026-01-31 | DocumentChunker + 19个单元测试 + 5个核心增值功能 |
 | C5 | Transform 基类 + ChunkRefiner | [x] | 2026-01-31 | BaseTransform + ChunkRefiner (Rule + LLM) + TraceContext + 25单元测试 + 5集成测试 |
 | C6 | MetadataEnricher | [x] | 2026-01-31 | MetadataEnricher (Rule + LLM) + 26单元测试 + 真实LLM集成测试 |
-| C7 | ImageCaptioner | [ ] | - | |
-| C8 | DenseEncoder | [ ] | - | |
+| C7 | ImageCaptioner | [x] | 2026-02-01 | ImageCaptioner + Azure Vision LLM 实现 + 集成测试 |
+| C8 | DenseEncoder | [x] | 2026-02-01 | 批量编码+Azure集成测试 |
 | C9 | SparseEncoder | [ ] | - | |
 | C10 | BatchProcessor | [ ] | - | |
 | C11 | VectorUpserter | [ ] | - | |
@@ -1769,12 +1769,12 @@ observability:
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
 | 阶段 B | 16 | 16 | 100% |
-| 阶段 C | 15 | 6 | 40% |
+| 阶段 C | 15 | 8 | 53% |
 | 阶段 D | 7 | 0 | 0% |
 | 阶段 E | 6 | 0 | 0% |
 | 阶段 F | 5 | 0 | 0% |
 | 阶段 G | 4 | 0 | 0% |
-| **总计** | **56** | **25** | **45%** |
+| **总计** | **56** | **27** | **48%** |
 
 
 ---
