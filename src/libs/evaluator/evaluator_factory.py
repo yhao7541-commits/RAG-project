@@ -1,101 +1,90 @@
-"""Factory for creating Evaluator provider instances.
+"""Evaluator 工厂。
 
-This module implements the Factory Pattern to instantiate the appropriate
-Evaluator provider based on configuration.
+职责：
+1. 注册评估器实现。
+2. 按 `settings.evaluation` 动态创建对应评估器。
+3. 在关闭评估时回退到 NoneEvaluator，保证调用方无需分支判断。
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.libs.evaluator.base_evaluator import BaseEvaluator, NoneEvaluator
 from src.libs.evaluator.custom_evaluator import CustomEvaluator
 
-if TYPE_CHECKING:
-    from src.core.settings import Settings
-
 
 class EvaluatorFactory:
-    """Factory for creating Evaluator provider instances.
+    """基于注册表的评估器工厂。"""
 
-    Design Principles Applied:
-    - Factory Pattern: Centralizes object creation logic.
-    - Config-Driven: Provider selection based on settings.yaml.
-    - Fallback: Disabled evaluation returns NoneEvaluator.
-    - Fail-Fast: Raises clear errors for unknown providers.
-    """
-
-    _PROVIDERS: dict[str, type[BaseEvaluator]] = {
-        "custom": CustomEvaluator,
-    }
+    _PROVIDERS: dict[str, type[BaseEvaluator]] = {"custom": CustomEvaluator}
 
     @classmethod
-    def register_provider(cls, name: str, provider_class: type[BaseEvaluator]) -> None:
-        """Register a new Evaluator provider implementation.
+    def register_provider(
+        cls,
+        provider_name: str,
+        provider_class: type[BaseEvaluator],
+    ) -> None:
+        """注册评估器实现类。
 
-        Args:
-            name: The provider identifier (e.g., 'ragas', 'custom').
-            provider_class: The BaseEvaluator subclass implementing the provider.
-
-        Raises:
-            ValueError: If provider_class doesn't inherit from BaseEvaluator.
+        参数说明：
+        - provider_name: 评估器名称（例如 `custom`）。
+        - provider_class: 实现类，必须继承 BaseEvaluator。
         """
+
+        normalized_name = provider_name.strip().lower()
+        if not normalized_name:
+            raise ValueError("Provider name cannot be empty")
+
         if not issubclass(provider_class, BaseEvaluator):
-            raise ValueError(
-                f"Provider class {provider_class.__name__} must inherit from BaseEvaluator"
-            )
-        cls._PROVIDERS[name.lower()] = provider_class
+            raise ValueError("Provider class must inherit from BaseEvaluator")
+
+        cls._PROVIDERS[normalized_name] = provider_class
 
     @classmethod
-    def create(cls, settings: Settings, **override_kwargs: Any) -> BaseEvaluator:
-        """Create an Evaluator instance based on configuration.
+    def create(cls, settings: Any, **overrides: Any) -> BaseEvaluator:
+        """根据配置创建评估器实例。
 
-        Args:
-            settings: The application settings containing evaluation config.
-            **override_kwargs: Optional parameters to override config values.
-
-        Returns:
-            An instance of the configured Evaluator provider.
-
-        Raises:
-            ValueError: If the configured provider is not supported or missing.
-            RuntimeError: If provider initialization fails.
+        参数说明：
+        - settings: 全局配置对象，读取 `settings.evaluation.*`。
+        - **overrides: 运行时覆盖参数，透传给具体评估器实现。
         """
-        try:
-            evaluation_settings = settings.evaluation
-            if evaluation_settings is None:
-                raise AttributeError("settings.evaluation is None")
-            provider_name = evaluation_settings.provider.lower()
-            enabled = bool(evaluation_settings.enabled)
-        except AttributeError as e:
+
+        evaluation_settings = getattr(settings, "evaluation", None)
+        if evaluation_settings is None:
             raise ValueError(
-                "Missing required configuration: settings.evaluation.provider. "
-                "Please ensure 'evaluation.provider' is specified in settings.yaml"
-            ) from e
+                "Missing required configuration: settings.evaluation.provider"
+            )
 
-        if not enabled or provider_name in {"none", "disabled"}:
-            return NoneEvaluator(settings=settings, **override_kwargs)
+        enabled_value = getattr(evaluation_settings, "enabled", None)
+        if enabled_value is False:
+            return NoneEvaluator()
 
+        provider_raw = getattr(evaluation_settings, "provider", None)
+        if not isinstance(provider_raw, str) or not provider_raw.strip():
+            raise ValueError(
+                "Missing required configuration: settings.evaluation.provider"
+            )
+
+        provider_name = provider_raw.strip().lower()
         provider_class = cls._PROVIDERS.get(provider_name)
         if provider_class is None:
-            available = ", ".join(sorted(cls._PROVIDERS.keys())) if cls._PROVIDERS else "none"
+            available = cls.list_providers()
+            available_text = ", ".join(available) if available else "none"
             raise ValueError(
-                f"Unsupported Evaluator provider: '{provider_name}'. "
-                f"Available providers: {available}."
+                f"Unsupported Evaluator provider: '{provider_raw}'. "
+                f"Available providers: {available_text}"
             )
 
-        try:
-            return provider_class(settings=settings, **override_kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to instantiate Evaluator provider '{provider_name}': {e}"
-            ) from e
+        provider_constructor: Any = provider_class
+        provider_metrics = getattr(evaluation_settings, "metrics", None)
+        return provider_constructor(metrics=provider_metrics, **overrides)
 
     @classmethod
     def list_providers(cls) -> list[str]:
-        """List all registered provider names.
+        """返回已注册 provider 列表（字母序）。
 
-        Returns:
-            Sorted list of available provider identifiers.
+        排序输出方便日志展示和错误提示比对。
         """
+
         return sorted(cls._PROVIDERS.keys())

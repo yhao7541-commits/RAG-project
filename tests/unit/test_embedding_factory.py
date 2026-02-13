@@ -1,10 +1,13 @@
-"""Unit tests for Embedding Factory and Base Embedding.
+"""Embedding 抽象层与工厂层单元测试。
 
-Test Coverage:
-- Factory pattern: provider registration, creation, and routing
-- Configuration-driven instantiation
-- Error handling for unknown/missing providers
-- Validation logic in BaseEmbedding
+测试目标：
+1. `BaseEmbedding` 的输入校验是否可靠。
+2. `EmbeddingFactory` 是否能按配置正确创建 provider。
+3. 错误场景（配置缺失、provider 不存在、构造失败）是否可读且可定位。
+
+阅读建议：
+- 先看 `FakeEmbedding`，它是最小实现，便于理解接口要求。
+- 再看 `TestEmbeddingFactory`，理解“注册 -> 创建 -> 报错”的主流程。
 """
 
 from typing import Any, List, Optional
@@ -40,7 +43,13 @@ class FakeEmbedding(BaseEmbedding):
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> List[List[float]]:
-        """Generate fake embeddings."""
+        """生成可预测的假向量。
+
+        参数说明：
+        - texts: 输入文本列表。
+        - trace: 预留追踪参数（当前假实现不使用）。
+        - **kwargs: 预留扩展参数。
+        """
         self.validate_texts(texts)
         self.call_count += 1
         
@@ -53,7 +62,7 @@ class FakeEmbedding(BaseEmbedding):
 
 
 class TestBaseEmbedding:
-    """Tests for BaseEmbedding abstract class."""
+    """验证 BaseEmbedding 的通用校验和默认行为。"""
     
     def test_validate_texts_success(self):
         """Valid text list should pass validation."""
@@ -97,7 +106,7 @@ class TestBaseEmbedding:
 
 
 class TestFakeEmbedding:
-    """Tests for FakeEmbedding provider implementation."""
+    """验证 FakeEmbedding 的可预测行为。"""
     
     def test_embed_single_text(self):
         """Embedding single text should return one vector."""
@@ -141,7 +150,7 @@ class TestFakeEmbedding:
 
 
 class TestEmbeddingFactory:
-    """Tests for EmbeddingFactory."""
+    """验证 EmbeddingFactory 的注册、创建与错误处理。"""
     
     def setup_method(self):
         """Reset factory registry before each test."""

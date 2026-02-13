@@ -1,38 +1,38 @@
-"""
-Modular RAG MCP Server - Main Entry Point
+"""Application entrypoint.
 
-This is the entry point for the MCP Server. It initializes the configuration,
-sets up logging, and starts the server.
+Stage A3 wires Settings loading + minimal logger.
 """
+
+from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from src.core.settings import SettingsError, load_settings
 from src.observability.logger import get_logger
 
 
-def main() -> int:
-    """
-    Main entry point for the MCP Server.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for failure)
-    """
-    print("Modular RAG MCP Server - Starting...")
+def main() -> None:
+    logger = get_logger("mcp-server")
 
-    settings_path = Path("config/settings.yaml")
     try:
-        settings = load_settings(settings_path)
-    except SettingsError as exc:
-        print(f"Configuration error: {exc}", file=sys.stderr)
-        return 1
+        settings = load_settings("config/settings.yaml")
+    except SettingsError as e:
+        logger.error(str(e))
+        raise SystemExit(1) from e
 
-    logger = get_logger(log_level=settings.observability.log_level)
-    logger.info("Settings loaded successfully.")
-    logger.info("MCP Server will be implemented in Phase E.")
-    return 0
+    logger.info(
+        "Settings loaded (llm=%s, embedding=%s, vector_store=%s)",
+        settings.llm.provider,
+        settings.embedding.provider,
+        settings.vector_store.provider,
+    )
+
+    # Placeholder: MCP server startup will be implemented in later stages.
+    logger.info("MCP server bootstrap not implemented yet")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

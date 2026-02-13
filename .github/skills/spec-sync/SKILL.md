@@ -1,82 +1,81 @@
 ---
 name: spec-sync
-description: Synchronize DEV_SPEC.md and split it into chapter-specific files under specs/ directory. Run sync_spec.py to update, then read SPEC_INDEX.md for navigation. Foundation for all spec-based operations. Use when user says "同步规范", "sync spec", or before any spec-dependent task.
+description: 将 DEV_SPEC.md 同步并拆分为 specs/ 章节文件。运行 sync_spec.py 后，通过 SPEC_INDEX.md 快速定位规范内容。任何依赖规范的工作前都应先执行。
 metadata:
   category: documentation
   triggers: "sync spec, update spec, 同步规范"
 allowed-tools: Bash(python:*) Read
 ---
 
-# Spec Sync
+# 规范同步（Spec Sync）
 
-This skill synchronizes the master specification document (`DEV_SPEC.md`) and splits it into smaller, chapter-specific files stored in the `specs/` directory.
+这个技能用于把主规范 `DEV_SPEC.md` 同步到 `.github/skills/spec-sync/specs/` 目录，生成可按章节阅读的规范文件。
 
-> **This is a prerequisite for all spec-based operations.** Other skills depend on the split spec files to perform their tasks.
+> 这是所有“基于规范开发”任务的前置步骤。
 
 ---
 
-## How to Use
+## 什么时候使用
 
-### Used in dev-workflow (Automatic)
+- 当你修改了 `DEV_SPEC.md` 之后
+- 当 `specs/` 目录缺失、损坏或内容过期
+- 在单独调试某个依赖规范的技能前
+- 作为 `dev-workflow` 的第 1 阶段（自动执行）
 
-When you trigger dev-workflow (e.g., "下一阶段" or "继续开发"), **spec-sync runs automatically as Stage 1**. No manual action needed.
+---
 
-### Manual Sync (Edge Cases Only)
+## 使用方式
 
-Only manually run if:
-- You edited `DEV_SPEC.md` outside of workflow
-- Spec files are corrupted or missing
-- Testing a single skill in isolation
+### 在工作流里（自动）
+
+当你触发 `dev-workflow`（例如“下一阶段”“继续开发”）时，会自动执行 spec-sync，一般不需要手动操作。
+
+### 手动执行（仅边界场景）
 
 ```bash
-# Normal sync
+# 常规同步
 python .github/skills/spec-sync/sync_spec.py
 
-# Force regenerate (even if no changes detected)
+# 强制重建（即使未检测到变更）
 python .github/skills/spec-sync/sync_spec.py --force
 ```
 
 ---
 
-### What the Sync Script Does
+## 同步脚本会做什么
 
-The script performs these operations:
-1. Read `DEV_SPEC.md` from project root
-2. Calculate hash to detect changes 
-3. Split the document into chapter files under `specs/`
-4. Generate `SPEC_INDEX.md` as the navigation index
+1. 读取项目根目录下的 `DEV_SPEC.md`
+2. 计算哈希，判断是否发生变更
+3. 按章节拆分写入 `specs/`
+4. 生成导航索引 `SPEC_INDEX.md`
 
 ---
 
-### After Sync: Navigate with SPEC_INDEX.md
+## 同步后如何阅读
 
-**Use `SPEC_INDEX.md` as your entry point** to understand what each spec file contains:
+1. 先读索引：
 
+```text
+.github/skills/spec-sync/SPEC_INDEX.md
 ```
-Read: .github/skills/spec-sync/SPEC_INDEX.md
-```
 
-This index file provides:
-- Summary of each chapter's content 
-- Quick reference to locate the spec you need 
+2. 再按需要读对应章节，例如：
 
-Then read the specific spec file you need from `specs/` directory:
-
-```
-Read: .github/skills/spec-sync/specs/05-architecture.md
+```text
+.github/skills/spec-sync/specs/05-architecture.md
 ```
 
 ---
 
-## Directory Structure
+## 目录结构
 
-```
+```text
 .github/skills/spec-sync/
-├── SKILL.md              ← This file
-├── SPEC_INDEX.md         ← Auto-generated index (navigation index)
-├── sync_spec.py          ← Sync script
-├── .spec_hash            ← Hash file for change detection
-└── specs/                ← Split spec files (chapter files)
+├── SKILL.md
+├── SPEC_INDEX.md
+├── sync_spec.py
+├── .spec_hash
+└── specs/
     ├── 01-overview.md
     ├── 02-features.md
     ├── 03-tech-stack.md
@@ -88,11 +87,8 @@ Read: .github/skills/spec-sync/specs/05-architecture.md
 
 ---
 
-## Important Notes
+## 重要规则
 
-- **Never edit files in `specs/` directly** — they are auto-generated
-- **Always edit `DEV_SPEC.md`** and re-run the sync script
-- Use `--force` flag to regenerate even if no changes detected:
-  ```bash
-  python .github/skills/spec-sync/sync_spec.py --force
-  ```
+1. 不要直接编辑 `specs/` 下文件（这些是自动生成的）。
+2. 只编辑 `DEV_SPEC.md`，然后执行同步脚本。
+3. 若怀疑索引或章节异常，使用 `--force` 重建。

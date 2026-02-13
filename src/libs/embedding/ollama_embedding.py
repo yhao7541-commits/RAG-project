@@ -1,190 +1,140 @@
-"""Ollama Embedding implementation for local embedding models.
+"""Ollama Embedding 提供者实现（基于 LlamaIndex）。
 
-This module provides the Ollama Embedding implementation that works with
-locally running Ollama instances. Ollama enables running embedding models like
-nomic-embed-text, mxbai-embed-large, etc. on local hardware.
+这个模块只做两件事：
+1. 把项目统一的 `BaseEmbedding` 接口，映射到 LlamaIndex 的 OllamaEmbedding。
+2. 统一错误包装，确保上层拿到稳定且可读的异常。
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from importlib import import_module
+from typing import Any
 
 from src.libs.embedding.base_embedding import BaseEmbedding
 
 
 class OllamaEmbeddingError(RuntimeError):
-    """Raised when Ollama Embeddings API call fails.
-    
-    This exception provides clear error messages without exposing
-    sensitive configuration details like internal URLs.
-    """
+    """Ollama Embedding 调用失败时抛出的统一异常。"""
 
 
 class OllamaEmbedding(BaseEmbedding):
-    """Ollama Embedding provider implementation for local embedding.
-    
-    This class implements the BaseEmbedding interface for Ollama's embeddings API,
-    enabling local embedding generation without cloud dependencies.
-    
-    Attributes:
-        base_url: The base URL for the Ollama server (default: http://localhost:11434).
-        model: The model identifier to use (e.g., 'nomic-embed-text', 'mxbai-embed-large').
-        timeout: Request timeout in seconds.
-        dimension: The dimensionality of embeddings produced by this model.
-    
-    Example:
-        >>> from src.core.settings import load_settings
-        >>> settings = load_settings('config/settings.yaml')
-        >>> embedding = OllamaEmbedding(settings)
-        >>> vectors = embedding.embed(["hello world", "test"])
-    """
-    
+    """Ollama Embedding provider。"""
+
+    DEFAULT_MODEL = "nomic-embed-text"
     DEFAULT_BASE_URL = "http://localhost:11434"
-    DEFAULT_TIMEOUT = 120.0  # Longer timeout for local inference
-    DEFAULT_DIMENSION = 768  # Common dimension for local embedding models
-    
+    DEFAULT_TIMEOUT = 120.0
+    DEFAULT_DIMENSION = 768
+
+    @staticmethod
+    def _load_llamaindex_class() -> Any:
+        """延迟加载 LlamaIndex 的 OllamaEmbedding 类。"""
+
+        try:
+            module = import_module("llama_index.embeddings.ollama")
+        except Exception as error:  # noqa: BLE001 - 统一包装导入失败
+            raise OllamaEmbeddingError(
+                "llama-index-embeddings-ollama is required for OllamaEmbedding"
+            ) from error
+
+        provider_class = getattr(module, "OllamaEmbedding", None)
+        if provider_class is None:
+            raise OllamaEmbeddingError(
+                "Failed to load LlamaIndex OllamaEmbedding class"
+            )
+        return provider_class
+
+    @staticmethod
+    def _as_optional_str(value: Any) -> str | None:
+        """把配置值规范为可选字符串。"""
+
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @staticmethod
+    def _as_optional_int(value: Any) -> int | None:
+        """把配置值规范为可选整数。"""
+
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     def __init__(
         self,
         settings: Any,
-        base_url: Optional[str] = None,
-        timeout: Optional[float] = None,
+        *,
+        base_url: str | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize the Ollama Embedding provider.
-        
-        Args:
-            settings: Application settings containing Embedding configuration.
-            base_url: Optional base URL override (falls back to env var OLLAMA_BASE_URL).
-            timeout: Optional timeout override for requests.
-            **kwargs: Additional configuration overrides.
-        
-        Raises:
-            ValueError: If required configuration is missing.
-        """
-        self.model = settings.embedding.model
-        
-        # Base URL: explicit > env var > default
-        self.base_url = (
-            base_url 
-            or os.environ.get("OLLAMA_BASE_URL") 
-            or self.DEFAULT_BASE_URL
-        )
-        
-        # Timeout: explicit > default
-        self.timeout = timeout or self.DEFAULT_TIMEOUT
-        
-        # Dimension: settings > default
-        self.dimension = getattr(settings.embedding, 'dimensions', self.DEFAULT_DIMENSION)
-        
-        # Store any additional kwargs for future use
-        self._extra_config = kwargs
-    
+        """初始化 Ollama Embedding provider。"""
+
+        self.settings = settings
+
+        embedding_settings = getattr(settings, "embedding", None)
+
+        model_value = self._as_optional_str(getattr(embedding_settings, "model", None))
+        self.model = model_value or self.DEFAULT_MODEL
+
+        dimensions_value = getattr(embedding_settings, "dimensions", None)
+        configured_dimension = self._as_optional_int(dimensions_value)
+        self.dimension = configured_dimension or self.DEFAULT_DIMENSION
+
+        settings_base_url = self._as_optional_str(getattr(embedding_settings, "base_url", None))
+        configured_base_url = base_url or os.environ.get("OLLAMA_BASE_URL") or settings_base_url
+        self.base_url = str(configured_base_url or self.DEFAULT_BASE_URL).rstrip("/")
+
+        self.timeout = float(timeout if timeout is not None else self.DEFAULT_TIMEOUT)
+
     def embed(
         self,
-        texts: List[str],
-        trace: Optional[Any] = None,
+        texts: list[str],
+        trace: Any | None = None,
         **kwargs: Any,
-    ) -> List[List[float]]:
-        """Generate embeddings for a batch of texts using Ollama API.
-        
-        Args:
-            texts: List of text strings to embed. Must not be empty.
-            trace: Optional TraceContext for observability (reserved for Stage F).
-            **kwargs: Additional parameters (currently unused, reserved for future).
-        
-        Returns:
-            List of embedding vectors, where each vector is a list of floats.
-        
-        Raises:
-            ValueError: If texts list is empty or contains invalid entries.
-            OllamaEmbeddingError: If API call fails.
-        
-        Example:
-            >>> embeddings = embedding.embed(["hello", "world"])
-            >>> len(embeddings)  # 2 vectors
-            >>> len(embeddings[0])  # dimension (e.g., 768)
-        """
-        # Validate input
+    ) -> list[list[float]]:
+        """把文本列表转换成向量列表。"""
+
         self.validate_texts(texts)
-        
+
+        model_name = str(kwargs.get("model", self.model))
+        base_url = str(kwargs.get("base_url", self.base_url)).rstrip("/")
+        timeout_value = float(kwargs.get("timeout", self.timeout))
+
+        client_kwargs: dict[str, Any] = {"timeout": timeout_value}
+        override_client_kwargs = kwargs.get("client_kwargs")
+        if isinstance(override_client_kwargs, dict):
+            client_kwargs.update(override_client_kwargs)
+
         try:
-            import httpx
-        except ImportError as e:
+            llamaindex_ollama_embedding = self._load_llamaindex_class()
+
+            embedder = llamaindex_ollama_embedding(
+                model_name=model_name,
+                base_url=base_url,
+                client_kwargs=client_kwargs,
+            )
+            raw_vectors = embedder.get_text_embedding_batch(texts)
+        except OllamaEmbeddingError:
+            raise
+        except Exception as error:  # noqa: BLE001 - 统一包装 SDK 异常
             raise OllamaEmbeddingError(
-                "httpx library is required for Ollama Embedding. "
-                "Install with: pip install httpx"
-            ) from e
-        
-        # Prepare API request
-        url = f"{self.base_url}/api/embeddings"
-        
-        embeddings: List[List[float]] = []
-        
-        # Process each text individually (Ollama API expects single prompt)
-        for text in texts:
-            payload = {
-                "model": self.model,
-                "prompt": text,
-            }
-            
-            try:
-                with httpx.Client(timeout=self.timeout) as client:
-                    response = client.post(url, json=payload)
-                    response.raise_for_status()
-                    
-                    result = response.json()
-                    
-                    # Extract embedding from response
-                    if "embedding" not in result:
-                        raise OllamaEmbeddingError(
-                            f"Unexpected response format from Ollama API. "
-                            f"Expected 'embedding' field but got: {list(result.keys())}"
-                        )
-                    
-                    embeddings.append(result["embedding"])
-                    
-            except httpx.HTTPStatusError as e:
-                # HTTP error (4xx, 5xx)
-                raise OllamaEmbeddingError(
-                    f"Ollama API request failed with status {e.response.status_code}. "
-                    f"Ensure Ollama is running and model '{self.model}' is available."
-                ) from e
-            except httpx.ConnectError as e:
-                # Connection error (server not reachable)
-                raise OllamaEmbeddingError(
-                    f"Failed to connect to Ollama server at {self.base_url}. "
-                    f"Ensure Ollama is running (try: ollama serve)"
-                ) from e
-            except httpx.TimeoutException as e:
-                # Request timeout
-                raise OllamaEmbeddingError(
-                    f"Ollama API request timed out after {self.timeout}s. "
-                    f"The model may be loading or the request is too large."
-                ) from e
-            except httpx.RequestError as e:
-                # Other request errors
-                raise OllamaEmbeddingError(
-                    f"Ollama API request failed: {str(e)}"
-                ) from e
-            except (KeyError, ValueError, TypeError) as e:
-                # JSON parsing or data extraction error
-                raise OllamaEmbeddingError(
-                    f"Failed to parse Ollama API response: {str(e)}"
-                ) from e
-        
-        return embeddings
-    
-    def get_dimension(self) -> int:
-        """Get the dimensionality of embeddings produced by this provider.
-        
-        Returns:
-            The vector dimension configured for this instance.
-        
-        Note:
-            The actual dimension may vary by model. Common dimensions:
-            - nomic-embed-text: 768
-            - mxbai-embed-large: 1024
-            Configure via settings.embedding.dimensions or accepts default 768.
-        """
+                f"Ollama Embeddings API call failed: {error}"
+            ) from error
+
+        vectors = [list(vector) for vector in raw_vectors]
+        if len(vectors) != len(texts):
+            raise OllamaEmbeddingError(
+                "Output length mismatch: embedding result count does not match input count"
+            )
+
+        return vectors
+
+    def get_dimension(self) -> int | None:
+        """返回当前 provider 的向量维度。"""
+
         return self.dimension

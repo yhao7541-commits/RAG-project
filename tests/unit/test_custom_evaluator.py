@@ -1,4 +1,10 @@
-"""Unit tests for CustomEvaluator and EvaluatorFactory."""
+"""CustomEvaluator 与 EvaluatorFactory 单元测试。
+
+测试目标：
+1. 自定义指标 `hit_rate` / `mrr` 计算是否正确。
+2. 输入非法时是否给出明确错误。
+3. 工厂在 enabled=false 时是否回退到 NoneEvaluator。
+"""
 
 from unittest.mock import MagicMock
 
@@ -10,7 +16,7 @@ from src.libs.evaluator.evaluator_factory import EvaluatorFactory
 
 
 class TestCustomEvaluator:
-    """Tests for CustomEvaluator metrics computation."""
+    """验证 CustomEvaluator 指标计算逻辑。"""
 
     def test_hit_rate_and_mrr_success(self) -> None:
         evaluator = CustomEvaluator(metrics=["hit_rate", "mrr"])
@@ -51,7 +57,7 @@ class TestCustomEvaluator:
 
 
 class TestEvaluatorFactory:
-    """Tests for EvaluatorFactory."""
+    """验证 EvaluatorFactory 的创建与注册行为。"""
 
     def setup_method(self) -> None:
         EvaluatorFactory._PROVIDERS = {"custom": CustomEvaluator}

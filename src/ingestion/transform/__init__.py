@@ -1,16 +1,7 @@
-"""
-Transform Module.
+"""Transform package.
 
-This package contains document transformation components:
-- Base transform class
-- Chunk refiner
-- Metadata enricher
-- Image captioner
+Keep imports light at package import time.
+Concrete transforms are available in their respective modules.
 """
 
-from src.ingestion.transform.base_transform import BaseTransform
-from src.ingestion.transform.chunk_refiner import ChunkRefiner
-
-__all__ = ['BaseTransform', 'ChunkRefiner']
-
-__all__ = []
+__all__: list[str] = []

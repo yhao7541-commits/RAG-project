@@ -1,10 +1,9 @@
-"""Unit tests for Splitter Factory and Base Splitter.
+"""Splitter 抽象层与工厂层单元测试。
 
-Test Coverage:
-- Factory pattern: provider registration, creation, and routing
-- Configuration-driven instantiation
-- Error handling for unknown/missing providers
-- Validation logic in BaseSplitter
+测试目标：
+1. `BaseSplitter` 的输入/输出校验规则是否生效。
+2. `SplitterFactory` 是否能按配置正确选择 provider。
+3. 配置异常时错误信息是否足够清晰。
 """
 
 from typing import Any, List, Optional
@@ -23,6 +22,8 @@ class FakeSplitter(BaseSplitter):
     """
     
     def __init__(self, settings: Any = None, **kwargs: Any) -> None:
+        """保存参数并维护调用计数，便于断言工厂透传行为。"""
+
         self.settings = settings
         self.kwargs = kwargs
         self.call_count = 0
@@ -33,6 +34,8 @@ class FakeSplitter(BaseSplitter):
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> List[str]:
+        """按空白字符切分文本，得到稳定可预测的 chunks。"""
+
         self.validate_text(text)
         self.call_count += 1
         chunks = [chunk for chunk in text.split() if chunk]
@@ -41,7 +44,7 @@ class FakeSplitter(BaseSplitter):
 
 
 class TestBaseSplitter:
-    """Tests for BaseSplitter validation helpers."""
+    """验证 BaseSplitter 的输入与输出校验助手。"""
     
     def test_validate_text_success(self):
         splitter = FakeSplitter()
@@ -78,7 +81,7 @@ class TestBaseSplitter:
 
 
 class TestFakeSplitter:
-    """Tests for FakeSplitter behavior."""
+    """验证 FakeSplitter 的基础行为。"""
     
     def test_split_text_basic(self):
         splitter = FakeSplitter()
@@ -100,7 +103,7 @@ class TestFakeSplitter:
 
 
 class TestSplitterFactory:
-    """Tests for SplitterFactory."""
+    """验证 SplitterFactory 的注册、创建和错误处理。"""
     
     def setup_method(self) -> None:
         SplitterFactory._PROVIDERS.clear()

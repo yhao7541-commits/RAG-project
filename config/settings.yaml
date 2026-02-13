@@ -1,107 +1,239 @@
-# Modular RAG MCP Server - Configuration
-# This is the main configuration file for the MCP Server.
-# Edit this file to configure LLM, Embedding, VectorStore, and other services.
+# Modular RAG MCP Server 配置文件
+# 说明：本文件用于控制模型、向量化、检索、评测、可观测性等所有核心行为。
+# 建议：先在本地小规模数据上调参，再迁移到正式环境。
 
 # =============================================================================
-# LLM Configuration
+# LLM 配置（用于回答生成、改写、推理）
 # =============================================================================
 llm:
-  provider: "azure"  # Options: openai, azure, ollama, deepseek
+  # 模型提供商。
+  # 可选值：openai / azure / ollama / deepseek
+  # - openai/deepseek：通常走云端 API
+  # - azure：走 Azure OpenAI 资源
+  # - ollama：走本地模型服务
+  provider: "azure"
+
+  # 模型名称。
+  # 不同 provider 对该字段的解释略有差异：
+  # - openai/deepseek/ollama：通常就是实际模型名
+  # - azure：常与 deployment_name 配合使用
   model: "gpt-4o"
+
+  # Azure 部署名（仅当 provider=azure 时必填）。
+  # 一般在 Azure 控制台中创建模型部署时定义。
   deployment_name: "gpt-4o"
-  azure_endpoint: ""  # Set your Azure OpenAI endpoint here
+
+  # Azure OpenAI 资源地址（仅当 provider=azure 时必填）。
+  # 示例：https://your-resource.openai.azure.com
+  azure_endpoint: ""
+
+  # Azure OpenAI API 版本（仅当 provider=azure 时生效）。
   api_version: "2024-02-15-preview"
-  api_key: ""  # Set your Azure OpenAI API key here or use AZURE_OPENAI_API_KEY env var
+
+  # API 密钥。
+  # 建议优先使用环境变量（如 AZURE_OPENAI_API_KEY / OPENAI_API_KEY），
+  # 避免把密钥直接写入仓库文件。
+  api_key: ""
+
+  # 采样温度（控制回答随机性）。
+  # - 0.0：更稳定、更可复现
+  # - >0.0：更有创造性，但稳定性下降
   temperature: 0.0
+
+  # 单次最大输出 token 数（回答长度上限）。
+  # 值越大，回答可能更完整，但成本和耗时也会上升。
   max_tokens: 4096
 
+
 # =============================================================================
-# Embedding Configuration
+# Embedding 配置（用于向量化与语义检索）
 # =============================================================================
 embedding:
-  provider: "azure"  # Options: openai, azure, ollama
+  # 向量模型提供商。
+  # 可选值：openai / azure / ollama
+  provider: "azure"
+
+  # 向量模型名称。
   model: "text-embedding-ada-002"
-  dimensions: 1536  # text-embedding-ada-002 固定维度 (不传递给API, 仅用于验证)
-  # Azure-specific settings (if provider is azure):
-  azure_endpoint: ""  # Set your Azure OpenAI endpoint here
+
+  # 向量维度（用于校验与向量库建模对齐）。
+  # 某些模型是固定维度；若和实际维度不一致，可能导致入库失败。
+  dimensions: 1536
+
+  # Azure OpenAI 资源地址（provider=azure 时使用）。
+  azure_endpoint: ""
+
+  # Azure Embedding 部署名（provider=azure 时使用）。
   deployment_name: "text-embedding-ada-002"
+
+  # Azure Embedding API 版本（provider=azure 时使用）。
   api_version: "2024-02-15-preview"
-  api_key: ""  # Set your Azure OpenAI API key here or use AZURE_OPENAI_API_KEY env var
-  # OpenAI-specific settings (if provider is openai):
-  # api_key: ${OPENAI_API_KEY}
+
+  # Embedding API 密钥。
+  # 推荐走环境变量，避免明文存储。
+  api_key: ""
+
+  # 如果 provider=openai，可按需启用：
+  # base_url: "https://api.openai.com/v1"
+  # 如果 provider=ollama，可按需启用：
+  # base_url: "http://localhost:11434"
+
 
 # =============================================================================
-# Vision LLM Configuration (for Image Captioning)
+# Vision LLM 配置（用于图片理解、图文描述）
 # =============================================================================
 vision_llm:
-  enabled: true  # Set to true to enable vision capabilities
-  provider: "azure"  # Options: openai, azure, ollama
-  model: "gpt-4o"  # Options: gpt-4o, gpt-4-vision-preview (OpenAI), llava (Ollama)
-  # Azure-specific settings (if provider is azure):
+  # 是否启用视觉能力。
+  # false 时，图像相关流程通常会跳过或退化为文本路径。
+  enabled: true
+
+  # 视觉模型提供商。
+  # 可选值：openai / azure / ollama
+  provider: "azure"
+
+  # 视觉模型名称。
+  # 示例：gpt-4o（OpenAI/Azure），llava（Ollama）。
+  model: "gpt-4o"
+
+  # Azure 视觉模型资源地址（provider=azure 时使用）。
   azure_endpoint: ""
+
+  # Azure 视觉模型部署名（provider=azure 时使用）。
   deployment_name: "gpt-4o"
+
+  # Azure 视觉模型 API 版本（provider=azure 时使用）。
   api_version: "2024-02-15-preview"
+
+  # 视觉模型 API 密钥。
   api_key: ""
-  # Ollama-specific settings (if provider is ollama):
+
+  # 如果 provider=ollama，可按需启用本地服务地址：
   # base_url: "http://localhost:11434"
-  max_image_size: 2048  # Max dimension (width/height) for image compression
+
+  # 图片最长边压缩上限（像素）。
+  # 值越小：请求更省、速度更快，但细节可能丢失。
+  max_image_size: 2048
+
 
 # =============================================================================
-# Vector Store Configuration
+# 向量库配置（用于 chunk 向量持久化与检索）
 # =============================================================================
 vector_store:
-  provider: "chroma"  # Options: chroma, qdrant, pinecone
+  # 向量库类型。
+  # 可选值：chroma / qdrant / pinecone
+  provider: "chroma"
+
+  # 向量库持久化目录（本地路径）。
   persist_directory: "./data/db/chroma"
+
+  # 集合名称（可理解为“一个知识库分区”）。
   collection_name: "knowledge_hub"
 
+
 # =============================================================================
-# Retrieval Configuration
+# 检索参数配置（Dense + Sparse + 融合）
 # =============================================================================
 retrieval:
+  # 稠密检索召回数量（向量检索先取多少候选）。
   dense_top_k: 20
+
+  # 稀疏检索召回数量（关键词/BM25 先取多少候选）。
   sparse_top_k: 20
+
+  # 融合后最终保留数量（进入后续重排或生成的候选数）。
   fusion_top_k: 10
-  rrf_k: 60  # RRF constant
+
+  # RRF 融合常量 k。
+  # 常见默认值 60；值越大，排名位置差异被“平滑”得越明显。
+  rrf_k: 60
+
 
 # =============================================================================
-# Rerank Configuration
+# Rerank 配置（二阶段精排）
 # =============================================================================
 rerank:
+  # 是否启用重排。
+  # false 时仅使用初次检索排序结果。
   enabled: false
-  provider: "none"  # Options: none, cross_encoder, llm
+
+  # 重排器类型。
+  # 可选值：none / cross_encoder / llm
+  provider: "none"
+
+  # 重排模型名称。
   model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+  # 重排后保留的文档数量。
+  # 通常应 <= retrieval.fusion_top_k。
   top_k: 5
 
+
 # =============================================================================
-# Evaluation Configuration
+# 评测配置（离线质量评估）
 # =============================================================================
 evaluation:
+  # 是否启用评测。
   enabled: false
-  provider: "custom"  # Options: ragas, deepeval, custom
+
+  # 评测后端。
+  # 可选值：ragas / deepeval / custom
+  provider: "custom"
+
+  # 评测指标列表。
+  # - hit_rate：命中率（是否命中正确文档）
+  # - mrr：平均倒数排名（正确结果排名越靠前越好）
+  # - faithfulness：回答忠实度（是否忠于上下文）
   metrics:
     - "hit_rate"
     - "mrr"
     - "faithfulness"
 
-# =============================================================================
-# Observability Configuration
-# =============================================================================
-observability:
-  log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
-  trace_enabled: true
-  trace_file: "./logs/traces.jsonl"
-  structured_logging: true
 
 # =============================================================================
-# Ingestion Configuration
+# 可观测性配置（日志与链路追踪）
+# =============================================================================
+observability:
+  # 日志级别。
+  # 可选值：DEBUG / INFO / WARNING / ERROR
+  log_level: "INFO"
+
+  # 是否开启 trace 记录。
+  trace_enabled: true
+
+  # trace 输出文件路径（jsonl 格式）。
+  trace_file: "./logs/traces.jsonl"
+
+  # 是否输出结构化日志（更适合机器处理和检索）。
+  structured_logging: true
+
+
+# =============================================================================
+# 摄取流程配置（文档切块与批处理）
 # =============================================================================
 ingestion:
+  # 每个 chunk 的目标字符长度。
+  # 值越大：上下文更完整；值越小：检索粒度更细。
   chunk_size: 1000
+
+  # 相邻 chunk 的重叠字符数。
+  # 用于减少“句子被截断”带来的语义丢失。
   chunk_overlap: 200
-  splitter: "recursive"  # Options: recursive, semantic, fixed_length
+
+  # 切分器类型。
+  # 可选值：recursive（按指定符号切分） / semantic （语义切分）/ fixed_length（固定长度切分）
+  splitter: "recursive"
+
+  # 批处理大小（一次处理多少条 chunk）。
   batch_size: 100
-  
-# Chunk Refiner Configuration (C5)
+
+
+# =============================================================================
+# Chunk Refiner 配置（C5：切块后可选精修）
+# =============================================================================
 chunk_refiner:
-  use_llm: false  # Set to true to enable LLM-based refinement (requires LLM config)
-  # When use_llm is false or LLM call fails, falls back to rule-based refinement
+  # 是否使用 LLM 对 chunk 做精修。
+  # true：质量更高但会增加耗时/成本
+  # false：走规则法，速度更快且更稳定
+  use_llm: false
+
+  # 当 use_llm=false，或 LLM 调用失败时，系统会回退到规则法精修。

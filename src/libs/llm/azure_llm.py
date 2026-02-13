@@ -1,232 +1,205 @@
-"""Azure OpenAI LLM implementation.
+"""Azure OpenAI LLM 提供者实现（默认 HTTP，支持可选 LangChain 路径）。
 
-This module provides the Azure OpenAI LLM implementation that works with
-Azure's OpenAI Service API. It handles the Azure-specific authentication
-and endpoint configuration.
+实现原则：
+1. 默认走 Azure OpenAI 的 HTTP 接口（满足原始需求：mock HTTP 可测试）。
+2. 保留 `use_langchain=True` 的可选路径，满足后续 agent 统一接入需求。
+3. 对外统一返回 ChatResponse，保持工厂与上层调用稳定。
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+import importlib
+from typing import Any, Sequence
+
+import httpx
 
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
 
 
 class AzureLLMError(RuntimeError):
-    """Raised when Azure OpenAI API call fails."""
+    """Azure OpenAI 调用失败时抛出的统一异常。"""
 
 
 class AzureLLM(BaseLLM):
-    """Azure OpenAI LLM provider implementation.
-    
-    This class implements the BaseLLM interface for Azure's OpenAI Service.
-    Azure uses a different authentication method (API key in header) and
-    endpoint structure compared to standard OpenAI.
-    
-    Attributes:
-        api_key: The Azure API key for authentication.
-        endpoint: The Azure OpenAI endpoint URL.
-        deployment_name: The deployment name for the model.
-        api_version: The API version to use.
-        default_temperature: Default temperature for generation.
-        default_max_tokens: Default max tokens for generation.
-    
-    Example:
-        >>> from src.core.settings import load_settings
-        >>> settings = load_settings('config/settings.yaml')
-        >>> llm = AzureLLM(settings, endpoint='https://my-resource.openai.azure.com')
-        >>> response = llm.chat([Message(role='user', content='Hello')])
-    """
-    
+    """Azure OpenAI provider。"""
+
+    DEFAULT_TIMEOUT = 60.0
     DEFAULT_API_VERSION = "2024-02-15-preview"
-    
+
     def __init__(
         self,
         settings: Any,
-        api_key: Optional[str] = None,
-        endpoint: Optional[str] = None,
-        deployment_name: Optional[str] = None,
-        api_version: Optional[str] = None,
+        *,
+        api_key: str | None = None,
+        endpoint: str | None = None,
+        api_version: str | None = None,
+        timeout: float | None = None,
+        use_langchain: bool | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize the Azure OpenAI LLM provider.
-        
-        Args:
-            settings: Application settings containing LLM configuration.
-            api_key: Optional API key override (falls back to env var AZURE_OPENAI_API_KEY).
-            endpoint: Optional endpoint override (falls back to env var AZURE_OPENAI_ENDPOINT).
-            deployment_name: Optional deployment name (defaults to settings.llm.model).
-            api_version: Optional API version override.
-            **kwargs: Additional configuration overrides.
-        
-        Raises:
-            ValueError: If required configuration is missing.
-        """
-        self.deployment_name = deployment_name or settings.llm.model
-        self.default_temperature = settings.llm.temperature
-        self.default_max_tokens = settings.llm.max_tokens
-        
-        # API key: explicit > env var
-        self.api_key = api_key or os.environ.get("AZURE_OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "Azure OpenAI API key not provided. Set AZURE_OPENAI_API_KEY environment "
-                "variable or pass api_key parameter."
-            )
-        
-        # Endpoint: explicit > env var
-        self.endpoint = endpoint or os.environ.get("AZURE_OPENAI_ENDPOINT")
-        if not self.endpoint:
-            raise ValueError(
-                "Azure OpenAI endpoint not provided. Set AZURE_OPENAI_ENDPOINT environment "
-                "variable or pass endpoint parameter."
-            )
-        
-        # API version
-        self.api_version = api_version or self.DEFAULT_API_VERSION
-        
-        # Store any additional kwargs for future use
-        self._extra_config = kwargs
-    
+        """初始化 Azure provider 配置。"""
+
+        super().__init__(settings, **kwargs)
+
+        llm_settings = getattr(settings, "llm", None)
+        self.model = str(getattr(llm_settings, "model", "gpt-4o-mini"))
+        self.deployment_name = str(getattr(llm_settings, "deployment_name", self.model))
+        self.default_temperature = float(getattr(llm_settings, "temperature", 0.0))
+        self.default_max_tokens = int(getattr(llm_settings, "max_tokens", 1024))
+
+        api_key_value = (
+            api_key
+            or getattr(llm_settings, "api_key", None)
+            or os.environ.get("AZURE_OPENAI_API_KEY")
+        )
+        if not api_key_value:
+            raise ValueError("Azure OpenAI API key not provided")
+        self.api_key = str(api_key_value)
+
+        endpoint_value = (
+            endpoint
+            or getattr(llm_settings, "azure_endpoint", None)
+            or os.environ.get("AZURE_OPENAI_ENDPOINT")
+        )
+        if not endpoint_value:
+            raise ValueError("Azure OpenAI endpoint not provided")
+        self.endpoint = str(endpoint_value).rstrip("/")
+
+        version_value = api_version or getattr(llm_settings, "api_version", None)
+        self.api_version = str(version_value or self.DEFAULT_API_VERSION)
+        self.timeout = float(timeout if timeout is not None else self.DEFAULT_TIMEOUT)
+
+        if use_langchain is None:
+            self.use_langchain = bool(getattr(llm_settings, "use_langchain", False))
+        else:
+            self.use_langchain = bool(use_langchain)
+
     def chat(
         self,
-        messages: List[Message],
-        trace: Optional[Any] = None,
+        messages: Sequence[Message],
+        trace: Any | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
-        """Generate a chat completion using Azure OpenAI API.
-        
-        Args:
-            messages: List of conversation messages.
-            trace: Optional TraceContext for observability (reserved for Stage F).
-            **kwargs: Override parameters (temperature, max_tokens, etc.).
-        
-        Returns:
-            ChatResponse with generated content and metadata.
-        
-        Raises:
-            ValueError: If messages are invalid.
-            AzureLLMError: If API call fails.
-        """
-        # Validate input
+        """发送 Azure OpenAI 对话请求。"""
+
         self.validate_messages(messages)
-        
-        # Prepare request parameters
-        temperature = kwargs.get("temperature", self.default_temperature)
-        max_tokens = kwargs.get("max_tokens", self.default_max_tokens)
-        deployment = kwargs.get("deployment_name", self.deployment_name)
-        
-        # Convert messages to API format
-        api_messages = [{"role": m.role, "content": m.content} for m in messages]
-        
-        # Make API call
-        try:
-            response_data = self._call_api(
-                messages=api_messages,
-                deployment=deployment,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            
-            # Parse response
-            content = response_data["choices"][0]["message"]["content"]
-            usage = response_data.get("usage")
-            
-            return ChatResponse(
-                content=content,
-                model=response_data.get("model", deployment),
-                usage=usage,
-                raw_response=response_data,
-            )
-        except KeyError as e:
-            raise AzureLLMError(
-                f"[Azure] Unexpected response format: missing key {e}"
-            ) from e
-        except Exception as e:
-            if isinstance(e, AzureLLMError):
-                raise
-            raise AzureLLMError(
-                f"[Azure] API call failed: {type(e).__name__}: {e}"
-            ) from e
-    
-    def _call_api(
-        self,
-        messages: List[Dict[str, str]],
-        deployment: str,
-        temperature: float,
-        max_tokens: int,
-    ) -> Dict[str, Any]:
-        """Make the actual API call to Azure OpenAI.
-        
-        This method is separated to allow easy mocking in tests.
-        
-        Args:
-            messages: Messages in API format.
-            deployment: Deployment name.
-            temperature: Generation temperature.
-            max_tokens: Maximum tokens to generate.
-        
-        Returns:
-            Raw API response as dictionary.
-        
-        Raises:
-            AzureLLMError: If the API call fails.
-        """
-        import httpx
-        
-        # Azure endpoint format:
-        # {endpoint}/openai/deployments/{deployment}/chat/completions?api-version={version}
-        url = (
-            f"{self.endpoint.rstrip('/')}/openai/deployments/{deployment}/"
-            f"chat/completions?api-version={self.api_version}"
-        )
+
+        if self.use_langchain:
+            return self._chat_via_langchain(messages, **kwargs)
+        return self._chat_via_http(messages, **kwargs)
+
+    def _chat_via_http(self, messages: Sequence[Message], **kwargs: Any) -> ChatResponse:
+        """默认路径：HTTP 直连 Azure OpenAI Chat Completions。"""
+
+        model_name = str(kwargs.get("model", self.deployment_name))
+        temperature = float(kwargs.get("temperature", self.default_temperature))
+        max_tokens = int(kwargs.get("max_tokens", self.default_max_tokens))
+
+        payload = {
+            "model": model_name,
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
         headers = {
             "api-key": self.api_key,
             "Content-Type": "application/json",
         }
-        payload = {
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        
+        endpoint = (
+            f"{self.endpoint}/openai/deployments/{self.deployment_name}/chat/completions"
+            f"?api-version={self.api_version}"
+        )
+
         try:
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(url, json=payload, headers=headers)
-                
-                if response.status_code != 200:
-                    error_detail = self._parse_error_response(response)
-                    raise AzureLLMError(
-                        f"[Azure] API error (HTTP {response.status_code}): {error_detail}"
-                    )
-                
-                return response.json()
-        except httpx.TimeoutException as e:
-            raise AzureLLMError(
-                f"[Azure] Request timed out after 60 seconds"
-            ) from e
-        except httpx.RequestError as e:
-            raise AzureLLMError(
-                f"[Azure] Connection failed: {type(e).__name__}: {e}"
-            ) from e
-    
-    def _parse_error_response(self, response: Any) -> str:
-        """Parse error details from API response.
-        
-        Args:
-            response: The HTTP response object.
-        
-        Returns:
-            Human-readable error message.
-        """
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.post(endpoint, headers=headers, json=payload)
+        except httpx.RequestError as error:
+            raise AzureLLMError(f"[Azure OpenAI] API error: {error}") from error
+
         try:
-            error_data = response.json()
-            if "error" in error_data:
-                error = error_data["error"]
-                if isinstance(error, dict):
-                    return error.get("message", str(error))
-                return str(error)
-            return response.text
-        except Exception:
-            return response.text or "Unknown error"
+            data = response.json()
+        except Exception as error:  # noqa: BLE001
+            raise AzureLLMError("[Azure OpenAI] API error: Unexpected response format") from error
+
+        if response.status_code >= 400:
+            error_message = (
+                data.get("error", {}).get("message")
+                if isinstance(data, dict)
+                else None
+            )
+            readable_message = error_message or response.text or "Unknown error"
+            raise AzureLLMError(
+                f"[Azure OpenAI] API error (HTTP {response.status_code}): {readable_message}"
+            )
+
+        try:
+            content = data["choices"][0]["message"]["content"]
+            usage = data.get("usage", {})
+            output_model = str(data.get("model", self.model))
+        except Exception as error:  # noqa: BLE001
+            raise AzureLLMError("[Azure OpenAI] API error: Unexpected response format") from error
+
+        return ChatResponse(
+            content=str(content),
+            model=output_model,
+            usage={
+                "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
+                "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+                "total_tokens": int(usage.get("total_tokens", 0) or 0),
+            },
+            raw_response=data if isinstance(data, dict) else None,
+        )
+
+    def _chat_via_langchain(self, messages: Sequence[Message], **kwargs: Any) -> ChatResponse:
+        """可选路径：LangChain AzureChatOpenAI 调用。"""
+
+        try:
+            langchain_openai = importlib.import_module("langchain_openai")
+            llm_utils = importlib.import_module("src.libs.llm.langchain_utils")
+            AzureChatOpenAI = getattr(langchain_openai, "AzureChatOpenAI")
+            messages_to_langchain = getattr(llm_utils, "messages_to_langchain")
+            extract_usage_from_ai_message = getattr(
+                llm_utils,
+                "extract_usage_from_ai_message",
+            )
+        except Exception as error:  # noqa: BLE001
+            raise AzureLLMError(f"[Azure OpenAI] LangChain adapter unavailable: {error}") from error
+
+        model_name = str(kwargs.get("model", self.deployment_name))
+        temperature = float(kwargs.get("temperature", self.default_temperature))
+        max_tokens = int(kwargs.get("max_tokens", self.default_max_tokens))
+
+        try:
+            model = AzureChatOpenAI(
+                model=model_name,
+                api_key=self.api_key,
+                azure_endpoint=self.endpoint,
+                api_version=self.api_version,
+                azure_deployment=self.deployment_name,
+                temperature=temperature,
+                timeout=self.timeout,
+                max_completion_tokens=max_tokens,
+            )
+            ai_message = model.invoke(messages_to_langchain(messages))
+        except Exception as error:  # noqa: BLE001
+            raise AzureLLMError(f"[Azure OpenAI] API error: {error}") from error
+
+        return ChatResponse(
+            content=self._extract_content(ai_message),
+            model=model_name,
+            usage=extract_usage_from_ai_message(ai_message),
+        )
+
+    def _extract_content(self, ai_message: Any) -> str:
+        """从模型响应中提取文本内容。"""
+
+        raw_content = getattr(ai_message, "content", "")
+        if isinstance(raw_content, str):
+            return raw_content
+        if isinstance(raw_content, list):
+            return "".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            )
+        return str(raw_content)

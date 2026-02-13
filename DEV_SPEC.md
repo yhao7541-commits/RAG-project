@@ -69,9 +69,7 @@
     - **智能分块**：摒弃机械的定长切分，采用语义感知的切分策略以保留完整语义；
     - **上下文增强**：为 Chunk 注入文档元数据（标题、页码）和图片描述（Image Caption），确保检索时不仅匹配文本，还能感知上下文。
 - **粗排召回 (Coarse Recall / Hybrid Search)**：采用 **混合检索** 策略作为第一阶段召回，快速筛选候选集。
-    - 结合 **稀疏检索 (Sparse Retrieval/BM25)** 利用关键词精确匹配，解决专有名词查找问题；
-    - 结合 **稠密检索 (Dense Retrieval/Embedding)** 利用语义向量，解决同义词与模糊表达问题；
-    - 两者互补，通过 RRF (Reciprocal Rank Fusion) 算法融合，确保查全率与查准率的平衡。
+     
 - **精排重排 (Rerank / Fine Ranking)**：在粗排召回的基础上进行深度语义排序。
 	- 采用 Cross-Encoder（专用重排模型）或 LLM Rerank（可选后端）对候选集进行逐一打分，识别细微的语义差异。
     - 通过 **"粗排(低成本泛召回) -> 精排(高成本精过滤)"** 的两段式架构，在不牺牲整体响应速度的前提下大幅提升 Top-Results 的精准度。
@@ -1042,7 +1040,7 @@ Hybrid Search 命中 Chunk（正文含 "[图片描述: 系统采用三层架构.
    - 检索指标：Hit Rate@K ≥ 90%、MRR ≥ 0.8、NDCG@K ≥ 0.85
    - 生成指标：Faithfulness ≥ 0.9、Answer Relevancy ≥ 0.85
    - 定期运行评估，监控指标是否回归
-
+ 
 **说明**：本节重点是验证评估体系的工程实现，而非重新设计评估方法（评估方法的设计见第 3 章技术选型）。
 
 ### 4.4 性能与压力测试（可选）
@@ -1162,7 +1160,7 @@ Hybrid Search 命中 Chunk（正文含 "[图片描述: 系统采用三层架构.
 │    │     │    Dense Vector | Sparse Vector | Chunk Content | Metadata          │     │      │
 │    │     └─────────────────────────────────────────────────────────────────────┘     │      │
 │    └─────────────────────────────────────────────────────────────────────────────────┘      │
-│                                                                                             │
+│                                                                                                  │
 │    ┌──────────────────────────────────┐    ┌──────────────────────────────────┐             │
 │    │       BM25 Index (稀疏索引)       │    │       Image Store (图片存储)     │             │
 │    │        倒排索引 | IDF 统计        │    │    本地文件系统 | Base64 编码     │             │
@@ -1674,45 +1672,45 @@ observability:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| A1 | 初始化目录树与最小可运行入口 | [x] | 2026-01-26 | 目录结构、配置文件、main.py 已创建 |
-| A2 | 引入 pytest 并建立测试目录约定 | [x] | 2026-01-26 | pytest 配置、tests/ 目录结构、22 个冒烟测试 |
-| A3 | 配置加载与校验（Settings） | [x] | 2026-01-26 | 配置加载、校验与单元测试 |
+| A1 | 初始化目录树与最小可运行入口 | [x] | 2026-02-06 | 目录结构+prompts占位+import兼容层 |
+| A2 | 引入 pytest 并建立测试目录约定 | [x] | 2026-02-06 | pytest基座+smoke imports通过 |
+| A3 | 配置加载与校验（Settings） | [x] | 2026-02-06 | load_settings + validate_settings + logger stub + unit tests |
 
 #### 阶段 B：Libs 可插拔层
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| B1 | LLM 抽象接口与工厂 | [x] | 2026-01-27 | BaseLLM + LLMFactory + 16个单元测试 |
-| B2 | Embedding 抽象接口与工厂 | [x] | 2026-01-27 | BaseEmbedding + EmbeddingFactory + 22个单元测试 |
-| B3 | Splitter 抽象接口与工厂 | [x] | 2026-01-27 | BaseSplitter + SplitterFactory + 20个单元测试 |
-| B4 | VectorStore 抽象接口与工厂 | [x] | 2026-01-27 | BaseVectorStore + VectorStoreFactory + 34个单元测试 |
-| B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-01-27 | BaseReranker + RerankerFactory + NoneReranker + 单元测试 |
-| B6 | Evaluator 抽象接口与工厂 | [x] | 2026-01-27 | BaseEvaluator + EvaluatorFactory + CustomEvaluator + 单元测试 |
-| B7.1 | OpenAI-Compatible LLM 实现 | [x] | 2026-01-28 | OpenAILLM + AzureLLM + DeepSeekLLM + 33个单元测试 |
-| B7.2 | Ollama LLM 实现 | [x] | 2026-01-28 | OllamaLLM + 32个单元测试 |
-| B7.3 | OpenAI & Azure Embedding 实现 | [x] | 2026-01-28 | OpenAIEmbedding + AzureEmbedding + 27个单元测试 |
-| B7.4 | Ollama Embedding 实现 | [x] | 2026-01-28 | OllamaEmbedding + 20个单元测试 |
-| B7.5 | Recursive Splitter 默认实现 | [x] | 2026-01-28 | RecursiveSplitter + 24个单元测试 + langchain集成 |
-| B7.6 | ChromaStore 默认实现 | [x] | 2026-01-30 | ChromaStore + 20个集成测试 + roundtrip验证 |
-| B7.7 | LLM Reranker 实现 | [x] | 2026-01-30 | LLMReranker + 20个单元测试 + prompt模板支持 |
-| B7.8 | Cross-Encoder Reranker 实现 | [x] | 2026-01-30 | CrossEncoderReranker + 26个单元测试 + 工厂集成 |
-| B8 | Vision LLM 抽象接口与工厂集成 | [x] | 2026-01-31 | BaseVisionLLM + ImageInput + LLMFactory扩展 + 35个单元测试 |
-| B9 | Azure Vision LLM 实现 | [x] | 2026-01-31 | AzureVisionLLM + 22个单元测试 + mock测试 + 图片压缩 |
+| B1 | LLM 抽象接口与工厂 | [x] | 2026-02-08 | BaseLLM/Message/ChatResponse + LLMFactory(provider registry/create/list) + unit test target ready |
+| B2 | Embedding 抽象接口与工厂 | [x] | 2026-02-09 | BaseEmbedding(输入校验/维度接口) + EmbeddingFactory(注册/创建/错误包装) + unit tests通过 |
+| B3 | Splitter 抽象接口与工厂 | [x] | 2026-02-09 | BaseSplitter(输入/输出校验) + SplitterFactory(注册/创建/错误提示含B7.5指引) + unit tests通过 |
+| B4 | VectorStore 抽象接口与工厂 | [x] | 2026-02-09 | BaseVectorStore(记录/查询参数校验+默认delete/clear) + VectorStoreFactory(注册/创建/错误包装) + unit tests通过 |
+| B5 | Reranker 抽象接口与工厂（含 None 回退） | [x] | 2026-02-09 | BaseReranker/NoneReranker + RerankerFactory(禁用与none回退/路由) + unit tests通过 |
+| B6 | Evaluator 抽象接口与工厂 | [x] | 2026-02-09 | BaseEvaluator/NoneEvaluator + CustomEvaluator(hit_rate,mrr) + EvaluatorFactory + unit tests通过 |
+| B7.1 | OpenAI-Compatible LLM 实现 | [x] | 2026-02-09 | OpenAILLM/AzureLLM/DeepSeekLLM + LLMFactory默认注册 + provider smoke tests通过 |
+| B7.2 | Ollama LLM 实现 | [x] | 2026-02-11 | Ollama LLM 已完成并通过对应单测。 |
+| B7.3 | OpenAI & Azure Embedding 实现 | [x] | 2026-02-11 | OpenAI/Azure Embedding 已完成并通过对应单测。 |
+| B7.4 | Ollama Embedding 实现 | [x] | 2026-02-12 | Ollama Embedding 已完成（基于 LlamaIndex 适配 + 工厂注册）并通过对应单测。 |
+| B7.5 | Recursive Splitter 默认实现 | [ ] | 
+| B7.6 | ChromaStore 默认实现 | [ ] |
+| B7.7 | LLM Reranker 实现 | [ ] | 
+| B7.8 | Cross-Encoder Reranker 实现 | [ ] | 
+| B8 | Vision LLM 抽象接口与工厂集成 | [ ] |
+| B9 | Azure Vision LLM 实现 | [ ] | 
 
 #### 阶段 C：Ingestion Pipeline MVP
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [x] | 2026-01-30 | Document/Chunk/ChunkRecord + 18个单元测试 |
-| C2 | 文件完整性检查（SHA256） | [x] | 2026-01-30 | FileIntegrityChecker + SQLiteIntegrityChecker + 25个单元测试 |
-| C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-01-30 | BaseLoader + PdfLoader + PyMuPDF图片提取 + 21单元测试 + 9集成测试 |
-| C4 | Splitter 集成（调用 Libs） | [x] | 2026-01-31 | DocumentChunker + 19个单元测试 + 5个核心增值功能 |
-| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-01-31 | BaseTransform + ChunkRefiner (Rule + LLM) + TraceContext + 25单元测试 + 5集成测试 |
-| C6 | MetadataEnricher | [x] | 2026-01-31 | MetadataEnricher (Rule + LLM) + 26单元测试 + 真实LLM集成测试 |
-| C7 | ImageCaptioner | [x] | 2026-02-01 | ImageCaptioner + Azure Vision LLM 实现 + 集成测试 |
-| C8 | DenseEncoder | [x] | 2026-02-01 | 批量编码+Azure集成测试 |
-| C9 | SparseEncoder | [x] | 2026-02-01 | 词频统计+语料库统计+26单元测试 |
-| C10 | BatchProcessor | [x] | 2026-02-01 | BatchProcessor + BatchResult + 20个单元测试 |
+| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [ ] | 
+| C2 | 文件完整性检查（SHA256） | [ ] | 
+| C3 | Loader 抽象基类与 PDF Loader | [ ] |
+| C4 | Splitter 集成（调用 Libs） | [ ] | 
+| C5 | Transform 基类 + ChunkRefiner | [ ] |
+| C6 | MetadataEnricher | [ ] | 
+| C7 | ImageCaptioner | [ ] |
+| C8 | DenseEncoder | [ ] | 
+| C9 | SparseEncoder | [ ] | 
+| C10 | BatchProcessor | [ ] |  |  |
 | C11 | BM25Indexer（倒排索引+IDF计算） | [ ] | - |  |
 | C12 | VectorUpserter（幂等upsert） | [ ] | - |  |
 | C13 | ImageStorage | [ ] | - | |
@@ -1768,13 +1766,13 @@ observability:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 16 | 100% |
-| 阶段 C | 15 | 10 | 67% |
+| 阶段 B | 16 | 10 | 63% |
+| 阶段 C | 15 | 0 | 0% |
 | 阶段 D | 7 | 0 | 0% |
 | 阶段 E | 6 | 0 | 0% |
 | 阶段 F | 5 | 0 | 0% |
 | 阶段 G | 4 | 0 | 0% |
-| **总计** | **56** | **29** | **52%** |
+| **总计** | **56** | **13** | **23%** |
 
 
 ---

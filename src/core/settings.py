@@ -1,66 +1,23 @@
-"""Configuration loading and validation for the Modular RAG MCP Server."""
+"""Settings loading and validation.
+
+This module provides a minimal, type-safe configuration loader for the project.
+
+Design principles:
+- Fail-fast: missing required fields raise a readable error that includes field path
+- No side effects: this module only parses/validates configuration; no network/IO init
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Mapping, Sequence
 
 import yaml
 
 
 class SettingsError(ValueError):
-    """Raised when settings validation fails."""
-
-
-def _require_mapping(data: Dict[str, Any], key: str, path: str) -> Dict[str, Any]:
-    value = data.get(key)
-    if value is None:
-        raise SettingsError(f"Missing required field: {path}.{key}")
-    if not isinstance(value, dict):
-        raise SettingsError(f"Expected mapping for field: {path}.{key}")
-    return value
-
-
-def _require_value(data: Dict[str, Any], key: str, path: str) -> Any:
-    if key not in data or data.get(key) is None:
-        raise SettingsError(f"Missing required field: {path}.{key}")
-    return data[key]
-
-
-def _require_str(data: Dict[str, Any], key: str, path: str) -> str:
-    value = _require_value(data, key, path)
-    if not isinstance(value, str) or not value.strip():
-        raise SettingsError(f"Expected non-empty string for field: {path}.{key}")
-    return value
-
-
-def _require_int(data: Dict[str, Any], key: str, path: str) -> int:
-    value = _require_value(data, key, path)
-    if not isinstance(value, int):
-        raise SettingsError(f"Expected integer for field: {path}.{key}")
-    return value
-
-
-def _require_number(data: Dict[str, Any], key: str, path: str) -> float:
-    value = _require_value(data, key, path)
-    if not isinstance(value, (int, float)):
-        raise SettingsError(f"Expected number for field: {path}.{key}")
-    return float(value)
-
-
-def _require_bool(data: Dict[str, Any], key: str, path: str) -> bool:
-    value = _require_value(data, key, path)
-    if not isinstance(value, bool):
-        raise SettingsError(f"Expected boolean for field: {path}.{key}")
-    return value
-
-
-def _require_list(data: Dict[str, Any], key: str, path: str) -> List[Any]:
-    value = _require_value(data, key, path)
-    if not isinstance(value, list):
-        raise SettingsError(f"Expected list for field: {path}.{key}")
-    return value
+    """Raised when settings are missing or invalid."""
 
 
 @dataclass(frozen=True)
@@ -76,13 +33,6 @@ class EmbeddingSettings:
     provider: str
     model: str
     dimensions: int
-    # Azure-specific optional fields
-    api_key: Optional[str] = None
-    api_version: Optional[str] = None
-    azure_endpoint: Optional[str] = None
-    deployment_name: Optional[str] = None
-    # Ollama-specific optional fields
-    base_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -112,7 +62,7 @@ class RerankSettings:
 class EvaluationSettings:
     enabled: bool
     provider: str
-    metrics: List[str]
+    metrics: list[str]
 
 
 @dataclass(frozen=True)
@@ -121,19 +71,6 @@ class ObservabilitySettings:
     trace_enabled: bool
     trace_file: str
     structured_logging: bool
-
-
-@dataclass(frozen=True)
-class VisionLLMSettings:
-    enabled: bool
-    provider: str
-    model: str
-    max_image_size: int
-    api_key: Optional[str] = None
-    api_version: Optional[str] = None
-    azure_endpoint: Optional[str] = None
-    deployment_name: Optional[str] = None
-    base_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -153,101 +90,68 @@ class Settings:
     rerank: RerankSettings
     evaluation: EvaluationSettings
     observability: ObservabilitySettings
-    ingestion: Optional[IngestionSettings] = None
-    vision_llm: Optional[VisionLLMSettings] = None
+    ingestion: IngestionSettings
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Settings":
-        if not isinstance(data, dict):
-            raise SettingsError("Settings root must be a mapping")
 
-        llm = _require_mapping(data, "llm", "settings")
-        embedding = _require_mapping(data, "embedding", "settings")
-        vector_store = _require_mapping(data, "vector_store", "settings")
-        retrieval = _require_mapping(data, "retrieval", "settings")
-        rerank = _require_mapping(data, "rerank", "settings")
-        evaluation = _require_mapping(data, "evaluation", "settings")
-        observability = _require_mapping(data, "observability", "settings")
+def _require_section(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = raw.get(key)
+    if value is None or not isinstance(value, Mapping):
+        raise SettingsError(f"Missing required section: {key}")
+    return value
 
-        ingestion_settings = None
-        if "ingestion" in data:
-            ingestion = _require_mapping(data, "ingestion", "settings")
-            ingestion_settings = IngestionSettings(
-                chunk_size=_require_int(ingestion, "chunk_size", "ingestion"),
-                chunk_overlap=_require_int(ingestion, "chunk_overlap", "ingestion"),
-                splitter=_require_str(ingestion, "splitter", "ingestion"),
-                batch_size=_require_int(ingestion, "batch_size", "ingestion"),
-            )
 
-        vision_llm_settings = None
-        if "vision_llm" in data:
-            vision_llm = _require_mapping(data, "vision_llm", "settings")
-            vision_llm_settings = VisionLLMSettings(
-                enabled=_require_bool(vision_llm, "enabled", "vision_llm"),
-                provider=_require_str(vision_llm, "provider", "vision_llm"),
-                model=_require_str(vision_llm, "model", "vision_llm"),
-                max_image_size=_require_int(vision_llm, "max_image_size", "vision_llm"),
-                api_key=vision_llm.get("api_key"),
-                api_version=vision_llm.get("api_version"),
-                azure_endpoint=vision_llm.get("azure_endpoint"),
-                deployment_name=vision_llm.get("deployment_name"),
-                base_url=vision_llm.get("base_url"),
-            )
+def _optional_section(raw: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = raw.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise SettingsError(f"Invalid section type: {key}")
+    return value
 
-        settings = cls(
-            llm=LLMSettings(
-                provider=_require_str(llm, "provider", "llm"),
-                model=_require_str(llm, "model", "llm"),
-                temperature=_require_number(llm, "temperature", "llm"),
-                max_tokens=_require_int(llm, "max_tokens", "llm"),
-            ),
-            embedding=EmbeddingSettings(
-                provider=_require_str(embedding, "provider", "embedding"),
-                model=_require_str(embedding, "model", "embedding"),
-                dimensions=_require_int(embedding, "dimensions", "embedding"),
-                api_key=embedding.get("api_key"),
-                api_version=embedding.get("api_version"),
-                azure_endpoint=embedding.get("azure_endpoint"),
-                deployment_name=embedding.get("deployment_name"),
-                base_url=embedding.get("base_url"),
-            ),
-            vector_store=VectorStoreSettings(
-                provider=_require_str(vector_store, "provider", "vector_store"),
-                persist_directory=_require_str(vector_store, "persist_directory", "vector_store"),
-                collection_name=_require_str(vector_store, "collection_name", "vector_store"),
-            ),
-            retrieval=RetrievalSettings(
-                dense_top_k=_require_int(retrieval, "dense_top_k", "retrieval"),
-                sparse_top_k=_require_int(retrieval, "sparse_top_k", "retrieval"),
-                fusion_top_k=_require_int(retrieval, "fusion_top_k", "retrieval"),
-                rrf_k=_require_int(retrieval, "rrf_k", "retrieval"),
-            ),
-            rerank=RerankSettings(
-                enabled=_require_bool(rerank, "enabled", "rerank"),
-                provider=_require_str(rerank, "provider", "rerank"),
-                model=_require_str(rerank, "model", "rerank"),
-                top_k=_require_int(rerank, "top_k", "rerank"),
-            ),
-            evaluation=EvaluationSettings(
-                enabled=_require_bool(evaluation, "enabled", "evaluation"),
-                provider=_require_str(evaluation, "provider", "evaluation"),
-                metrics=[str(item) for item in _require_list(evaluation, "metrics", "evaluation")],
-            ),
-            observability=ObservabilitySettings(
-                log_level=_require_str(observability, "log_level", "observability"),
-                trace_enabled=_require_bool(observability, "trace_enabled", "observability"),
-                trace_file=_require_str(observability, "trace_file", "observability"),
-                structured_logging=_require_bool(observability, "structured_logging", "observability"),
-            ),
-            ingestion=ingestion_settings,
-            vision_llm=vision_llm_settings,
-        )
 
-        return settings
+def _require(raw: Mapping[str, Any], key: str, path: str) -> Any:
+    if key not in raw:
+        raise SettingsError(f"Missing required field: {path}")
+    return raw[key]
+
+
+def _as_str(value: Any, path: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SettingsError(f"Invalid value for {path}: expected non-empty string")
+    return value
+
+
+def _as_int(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SettingsError(f"Invalid value for {path}: expected int")
+    return value
+
+
+def _as_bool(value: Any, path: str) -> bool:
+    if not isinstance(value, bool):
+        raise SettingsError(f"Invalid value for {path}: expected bool")
+    return value
+
+
+def _as_float(value: Any, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SettingsError(f"Invalid value for {path}: expected float")
+    return float(value)
+
+
+def _as_str_list(value: Any, path: str) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise SettingsError(f"Invalid value for {path}: expected list[str]")
+    out: list[str] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str):
+            raise SettingsError(f"Invalid value for {path}[{i}]: expected str")
+        out.append(item)
+    return out
 
 
 def validate_settings(settings: Settings) -> None:
-    """Validate settings and raise SettingsError if invalid."""
+    """Validate required fields and basic invariants."""
 
     if not settings.llm.provider:
         raise SettingsError("Missing required field: llm.provider")
@@ -255,26 +159,147 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Missing required field: embedding.provider")
     if not settings.vector_store.provider:
         raise SettingsError("Missing required field: vector_store.provider")
-    if not settings.retrieval.rrf_k:
-        raise SettingsError("Missing required field: retrieval.rrf_k")
-    if not settings.rerank.provider:
-        raise SettingsError("Missing required field: rerank.provider")
-    if not settings.evaluation.provider:
-        raise SettingsError("Missing required field: evaluation.provider")
-    if not settings.observability.log_level:
-        raise SettingsError("Missing required field: observability.log_level")
 
 
 def load_settings(path: str | Path) -> Settings:
-    """Load settings from a YAML file and validate required fields."""
+    """Load settings from a YAML file."""
 
     settings_path = Path(path)
     if not settings_path.exists():
         raise SettingsError(f"Settings file not found: {settings_path}")
 
-    with settings_path.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
+    try:
+        raw_obj = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise SettingsError(f"Invalid YAML in settings file: {settings_path}") from e
 
-    settings = Settings.from_dict(data or {})
+    if raw_obj is None or not isinstance(raw_obj, Mapping):
+        raise SettingsError(f"Invalid settings root: expected mapping in {settings_path}")
+
+    llm_raw = _require_section(raw_obj, "llm")
+    embedding_raw = _require_section(raw_obj, "embedding")
+    vector_store_raw = _require_section(raw_obj, "vector_store")
+    retrieval_raw = _require_section(raw_obj, "retrieval")
+    rerank_raw = _require_section(raw_obj, "rerank")
+    evaluation_raw = _require_section(raw_obj, "evaluation")
+    observability_raw = _require_section(raw_obj, "observability")
+    ingestion_raw = _optional_section(raw_obj, "ingestion")
+
+    llm = LLMSettings(
+        provider=_as_str(_require(llm_raw, "provider", "llm.provider"), "llm.provider"),
+        model=_as_str(_require(llm_raw, "model", "llm.model"), "llm.model"),
+        temperature=_as_float(llm_raw.get("temperature", 0.0), "llm.temperature"),
+        max_tokens=_as_int(llm_raw.get("max_tokens", 1024), "llm.max_tokens"),
+    )
+
+    embedding = EmbeddingSettings(
+        provider=_as_str(
+            _require(embedding_raw, "provider", "embedding.provider"),
+            "embedding.provider",
+        ),
+        model=_as_str(_require(embedding_raw, "model", "embedding.model"), "embedding.model"),
+        dimensions=_as_int(
+            _require(embedding_raw, "dimensions", "embedding.dimensions"),
+            "embedding.dimensions",
+        ),
+    )
+
+    vector_store = VectorStoreSettings(
+        provider=_as_str(
+            _require(vector_store_raw, "provider", "vector_store.provider"),
+            "vector_store.provider",
+        ),
+        persist_directory=_as_str(
+            _require(vector_store_raw, "persist_directory", "vector_store.persist_directory"),
+            "vector_store.persist_directory",
+        ),
+        collection_name=_as_str(
+            _require(vector_store_raw, "collection_name", "vector_store.collection_name"),
+            "vector_store.collection_name",
+        ),
+    )
+
+    retrieval = RetrievalSettings(
+        dense_top_k=_as_int(
+            _require(retrieval_raw, "dense_top_k", "retrieval.dense_top_k"),
+            "retrieval.dense_top_k",
+        ),
+        sparse_top_k=_as_int(
+            _require(retrieval_raw, "sparse_top_k", "retrieval.sparse_top_k"),
+            "retrieval.sparse_top_k",
+        ),
+        fusion_top_k=_as_int(
+            _require(retrieval_raw, "fusion_top_k", "retrieval.fusion_top_k"),
+            "retrieval.fusion_top_k",
+        ),
+        rrf_k=_as_int(_require(retrieval_raw, "rrf_k", "retrieval.rrf_k"), "retrieval.rrf_k"),
+    )
+
+    rerank = RerankSettings(
+        enabled=_as_bool(_require(rerank_raw, "enabled", "rerank.enabled"), "rerank.enabled"),
+        provider=_as_str(_require(rerank_raw, "provider", "rerank.provider"), "rerank.provider"),
+        model=_as_str(_require(rerank_raw, "model", "rerank.model"), "rerank.model"),
+        top_k=_as_int(_require(rerank_raw, "top_k", "rerank.top_k"), "rerank.top_k"),
+    )
+
+    evaluation = EvaluationSettings(
+        enabled=_as_bool(
+            _require(evaluation_raw, "enabled", "evaluation.enabled"),
+            "evaluation.enabled",
+        ),
+        provider=_as_str(
+            _require(evaluation_raw, "provider", "evaluation.provider"),
+            "evaluation.provider",
+        ),
+        metrics=_as_str_list(
+            evaluation_raw.get("metrics", []),
+            "evaluation.metrics",
+        ),
+    )
+
+    observability = ObservabilitySettings(
+        log_level=_as_str(
+            _require(observability_raw, "log_level", "observability.log_level"),
+            "observability.log_level",
+        ),
+        trace_enabled=_as_bool(
+            _require(observability_raw, "trace_enabled", "observability.trace_enabled"),
+            "observability.trace_enabled",
+        ),
+        trace_file=_as_str(
+            _require(observability_raw, "trace_file", "observability.trace_file"),
+            "observability.trace_file",
+        ),
+        structured_logging=_as_bool(
+            _require(
+                observability_raw,
+                "structured_logging",
+                "observability.structured_logging",
+            ),
+            "observability.structured_logging",
+        ),
+    )
+
+    ingestion = IngestionSettings(
+        chunk_size=_as_int(ingestion_raw.get("chunk_size", 1000), "ingestion.chunk_size"),
+        chunk_overlap=_as_int(
+            ingestion_raw.get("chunk_overlap", 200),
+            "ingestion.chunk_overlap",
+        ),
+        splitter=_as_str(ingestion_raw.get("splitter", "recursive"), "ingestion.splitter"),
+        batch_size=_as_int(ingestion_raw.get("batch_size", 100), "ingestion.batch_size"),
+    )
+
+    settings = Settings(
+        llm=llm,
+        embedding=embedding,
+        vector_store=vector_store,
+        retrieval=retrieval,
+        rerank=rerank,
+        evaluation=evaluation,
+        observability=observability,
+        ingestion=ingestion,
+    )
+
     validate_settings(settings)
     return settings

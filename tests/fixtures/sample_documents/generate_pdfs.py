@@ -3,8 +3,12 @@
 This script creates:
 1. simple.pdf - A plain text PDF with title and paragraphs
 2. with_images.pdf - A PDF containing text and an image (placeholder for now)
-"""
 
+生成用于测试的样本PDF文件。
+此脚本创建：
+1. simple.pdf - 一个包含标题和段落的普通文本PDF
+2. with_images.pdf - 一个包含文本和图像（当前为占位符）的PDF
+"""
 from pathlib import Path
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch

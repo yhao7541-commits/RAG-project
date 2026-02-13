@@ -1,96 +1,95 @@
-"""Abstract base class for Embedding providers.
+"""Embedding 提供者的基础抽象层。
 
-This module defines the pluggable interface for Embedding service providers,
-enabling seamless switching between different backends (OpenAI, Local/BGE, etc.)
-through configuration-driven instantiation.
+这个文件的目标是把不同厂商/不同后端的向量化能力统一成同一套接口，
+让上层业务代码只关心“给文本 -> 拿到向量”，而不需要关心底层细节。
+
+为什么要有这个抽象层：
+1. 方便替换实现（OpenAI / Azure / Ollama / 本地模型）。
+2. 方便测试（可以很容易写 FakeEmbedding）。
+3. 统一输入校验规则，避免各实现各写一套重复逻辑。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from typing import Any
 
 
 class BaseEmbedding(ABC):
-    """Abstract base class for Embedding providers.
-    
-    All Embedding implementations must inherit from this class and implement
-    the embed() method. This ensures consistent interface across different
-    providers (OpenAI, Local/BGE, Ollama, etc.).
-    
-    Design Principles Applied:
-    - Pluggable: Subclasses can be swapped without changing upstream code.
-    - Observable: Accepts optional TraceContext for observability integration.
-    - Config-Driven: Instances are created via factory based on settings.
-    - Batch-First: Designed for batch processing to maximize efficiency.
+    """所有 Embedding 提供者都需要继承的抽象基类。
+
+    约定：
+    - `embed()` 负责把一批文本转换为一批向量。
+    - `get_dimension()` 返回向量维度（如果实现可知）。
+    - `validate_texts()` 提供统一的输入校验逻辑，子类可直接复用。
     """
-    
+
+    def validate_texts(self, texts: list[str]) -> None:
+        """校验 embedding 输入文本列表。
+
+        参数:
+        - texts: 待向量化的文本列表。
+
+        校验规则:
+        1) 列表不能为空。
+        2) 每个元素必须是字符串。
+        3) 字符串不能是空串或纯空白。
+
+        抛出:
+        - ValueError: 任一规则不满足时抛出，错误信息尽量可读可定位。
+
+        参数设计说明：
+        - 为什么是 `list[str]`：embedding 常见是“批量输入换吞吐”，
+          用列表能一次处理多条文本，减少远程调用次数。
+        """
+
+        # 步骤 1：先保证“有输入”，否则后续流程没有意义。
+        if not texts:
+            raise ValueError("Texts list cannot be empty")
+
+        # 步骤 2：逐个元素检查类型和内容质量。
+        for index, text in enumerate(texts):
+            if not isinstance(text, str):
+                raise ValueError(f"Item at index {index} is not a string")
+
+            if not text.strip():
+                raise ValueError(
+                    f"Item at index {index} is empty or whitespace-only"
+                )
+
     @abstractmethod
     def embed(
         self,
-        texts: List[str],
-        trace: Optional[Any] = None,
+        texts: list[str],
+        trace: Any | None = None,
         **kwargs: Any,
-    ) -> List[List[float]]:
-        """Generate embeddings for a batch of texts.
-        
-        Args:
-            texts: List of text strings to embed. Must not be empty.
-            trace: Optional TraceContext for observability (reserved for Stage F).
-            **kwargs: Provider-specific parameters (batch_size, dimensions, etc.).
-        
-        Returns:
-            List of embedding vectors, where each vector is a list of floats.
-            The length of the outer list matches len(texts).
-            The length of each inner list (vector dimension) is provider-dependent.
-        
-        Raises:
-            ValueError: If texts list is empty or contains invalid entries.
-            RuntimeError: If the embedding provider call fails.
-        
-        Example:
-            >>> embeddings = embedding.embed(["hello", "world"])
-            >>> len(embeddings)  # 2 vectors
-            >>> len(embeddings[0])  # dimension (e.g., 1536 for OpenAI)
+    ) -> list[list[float]]:
+        """将一批文本转换为向量。
+
+        参数:
+        - texts: 输入文本列表。
+        - trace: 可选追踪上下文（便于可观测性埋点）。
+        - **kwargs: 子类实现需要的额外参数。
+
+        返回:
+        - list[list[float]]: 与输入文本一一对应的向量列表。
+
+        参数设计说明：
+        - `trace`: 预留给观测系统（例如记录本次调用耗时、请求ID）。
+        - `**kwargs`: 允许子类扩展厂商私有参数，
+          避免每加一个新参数就修改基类签名。
         """
-        pass
-    
-    def validate_texts(self, texts: List[str]) -> None:
-        """Validate input text list.
-        
-        Args:
-            texts: List of texts to validate.
-        
-        Raises:
-            ValueError: If texts list is empty or contains invalid entries.
+
+    def get_dimension(self) -> int | None:
+        """返回向量维度。
+
+        默认行为:
+        - 基类不做猜测，强制提醒子类实现自己的维度逻辑。
+        - 如果某些模型维度不固定，可在子类中返回 None。
+
+        参数设计说明：
+        - 返回 `int | None` 而不是仅 `int`，
+          是为了兼容“运行时才能确定维度”的模型实现。
         """
-        if not texts:
-            raise ValueError("Texts list cannot be empty")
-        
-        for i, text in enumerate(texts):
-            if not isinstance(text, str):
-                raise ValueError(
-                    f"Text at index {i} is not a string (type: {type(text).__name__})"
-                )
-            if not text.strip():
-                raise ValueError(
-                    f"Text at index {i} is empty or whitespace-only. "
-                    "Embedding providers typically reject empty strings."
-                )
-    
-    def get_dimension(self) -> int:
-        """Get the dimensionality of embeddings produced by this provider.
-        
-        Returns:
-            The vector dimension (e.g., 1536 for OpenAI text-embedding-3-small).
-        
-        Raises:
-            NotImplementedError: If the subclass doesn't override this method.
-        
-        Note:
-            Subclasses should override this method to return their specific dimension.
-            This is useful for validation and storage configuration.
-        """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_dimension() method"
-        )
+
+        raise NotImplementedError("Embedding provider must implement get_dimension")

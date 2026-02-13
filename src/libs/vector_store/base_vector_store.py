@@ -1,210 +1,132 @@
-"""Abstract base class for VectorStore providers.
+"""向量存储层的基础抽象定义。
 
-This module defines the pluggable interface for VectorStore providers,
-enabling seamless switching between different backends (Chroma, Qdrant, Milvus, etc.)
-through configuration-driven instantiation.
+本模块负责定义“向量库该怎么被调用”的统一契约。
+上层代码只依赖 BaseVectorStore，就可以在不同后端之间切换
+（例如 Chroma / Qdrant / Milvus），而不需要改业务逻辑。
+
+核心设计点：
+1. 统一 upsert/query 接口，避免上层感知后端差异。
+2. 提供可复用的输入校验，减少重复代码。
+3. 对可选能力（delete/clear）给出默认实现与明确报错。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class BaseVectorStore(ABC):
-    """Abstract base class for VectorStore providers.
-    
-    All VectorStore implementations must inherit from this class and implement
-    the upsert() and query() methods. This ensures consistent interface across
-    different providers (Chroma, Qdrant, Milvus, etc.).
-    
-    Design Principles Applied:
-    - Pluggable: Subclasses can be swapped without changing upstream code.
-    - Observable: Accepts optional TraceContext for observability integration.
-    - Config-Driven: Instances are created via factory based on settings.
-    - Idempotent: upsert() operations should be safely repeatable.
-    """
-    
+    """所有向量存储实现都应继承的抽象基类。"""
+
+    def validate_records(self, records: list[dict[str, Any]]) -> None:
+        """校验 upsert 输入记录。
+
+        记录结构要求：
+        - 每条记录必须是 dict。
+        - 必须包含 `id` 字段。
+        - 必须包含 `vector` 字段。
+        - `vector` 必须是非空 list/tuple。
+
+        参数设计说明：
+        - 使用 `list[dict]` 而不是自定义类，
+          是为了兼容多种上游数据来源（文件、数据库、API）并降低接入门槛。
+        """
+
+        # 步骤 1：至少要有一条记录。
+        if not records:
+            raise ValueError("Records list cannot be empty")
+
+        # 步骤 2：逐条校验结构与向量字段。
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                raise ValueError(f"Record at index {index} is not a dict")
+
+            if "id" not in record:
+                raise ValueError(f"Record at index {index} missing required field: 'id'")
+
+            if "vector" not in record:
+                raise ValueError(
+                    f"Record at index {index} missing required field: 'vector'"
+                )
+
+            vector_value = record["vector"]
+            if not isinstance(vector_value, (list, tuple)):
+                raise ValueError(f"Record at index {index} has invalid vector type")
+
+            if len(vector_value) == 0:
+                raise ValueError(f"Record at index {index} has empty vector")
+
+    def validate_query_vector(self, vector: list[float], top_k: int) -> None:
+        """校验 query 输入参数。
+
+        参数说明：
+        - vector: 查询向量。
+        - top_k: 希望返回的最相似结果数量。
+        """
+
+        # 规则 1：查询向量必须是 list 或 tuple。
+        if not isinstance(vector, (list, tuple)):
+            raise ValueError("Query vector must be a list or tuple")
+
+        # 规则 2：向量不能为空。
+        if len(vector) == 0:
+            raise ValueError("Query vector cannot be empty")
+
+        # 规则 3：top_k 必须是正整数。
+        if not isinstance(top_k, int) or top_k <= 0:
+            raise ValueError("top_k must be a positive integer")
+
     @abstractmethod
     def upsert(
         self,
-        records: List[Dict[str, Any]],
-        trace: Optional[Any] = None,
+        records: list[dict[str, Any]],
+        trace: Any | None = None,
         **kwargs: Any,
     ) -> None:
-        """Insert or update records in the vector store.
-        
-        Args:
-            records: List of records to upsert. Each record is a dict with:
-                - 'id': Unique identifier (str)
-                - 'vector': Embedding vector (List[float])
-                - 'metadata': Optional metadata dict (source, chunk_index, etc.)
-            trace: Optional TraceContext for observability (reserved for Stage F).
-            **kwargs: Provider-specific parameters.
-        
-        Raises:
-            ValueError: If records list is empty or contains invalid entries.
-            RuntimeError: If the vector store operation fails.
-        
-        Example:
-            >>> records = [
-            ...     {
-            ...         'id': 'doc1_chunk0',
-            ...         'vector': [0.1, 0.2, ..., 0.5],
-            ...         'metadata': {'source': 'doc1.pdf', 'page': 1}
-            ...     }
-            ... ]
-            >>> vector_store.upsert(records)
-        
-        Notes:
-            - This operation should be idempotent: upserting the same record
-              multiple times should produce the same final state.
-            - Implementations should handle batch operations efficiently.
+        """将记录写入向量库（已存在则更新，不存在则新增）。
+
+        参数说明：
+        - records: 批量写入记录。
+        - trace: 追踪上下文（可选）。
+        - **kwargs: 后端私有参数扩展位。
         """
-        pass
-    
+
     @abstractmethod
     def query(
         self,
-        vector: List[float],
+        vector: list[float],
         top_k: int = 10,
-        filters: Optional[Dict[str, Any]] = None,
-        trace: Optional[Any] = None,
+        filters: dict[str, Any] | None = None,
+        trace: Any | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
-        """Query the vector store for similar vectors.
-        
-        Args:
-            vector: Query vector (embedding) to search for.
-            top_k: Maximum number of results to return.
-            filters: Optional metadata filters (e.g., {'source': 'doc1.pdf'}).
-            trace: Optional TraceContext for observability (reserved for Stage F).
-            **kwargs: Provider-specific parameters.
-        
-        Returns:
-            List of matching records, sorted by similarity (descending).
-            Each record is a dict with:
-                - 'id': Record identifier
-                - 'score': Similarity score (higher = more similar)
-                - 'metadata': Associated metadata
-                - 'vector': Optional, the stored vector (provider-dependent)
-        
-        Raises:
-            ValueError: If vector is empty or top_k is invalid.
-            RuntimeError: If the vector store query fails.
-        
-        Example:
-            >>> query_vector = [0.1, 0.2, ..., 0.5]
-            >>> results = vector_store.query(query_vector, top_k=5)
-            >>> for result in results:
-            ...     print(f"ID: {result['id']}, Score: {result['score']}")
+    ) -> list[dict[str, Any]]:
+        """按查询向量检索最相似的前 top_k 条结果。
+
+        参数说明：
+        - vector: 查询向量。
+        - top_k: 返回数量。
+        - filters: 元数据过滤条件（可选）。
+        - trace: 追踪上下文（可选）。
+        - **kwargs: 后端私有参数扩展位。
         """
-        pass
-    
-    def validate_records(self, records: List[Dict[str, Any]]) -> None:
-        """Validate records before upsert.
-        
-        Args:
-            records: List of records to validate.
-        
-        Raises:
-            ValueError: If records list is empty or contains invalid entries.
+
+    def delete(self, ids: list[str], **kwargs: Any) -> None:
+        """可选能力：删除指定 id 的记录。
+
+        默认不实现，要求具体后端按需覆盖。
         """
-        if not records:
-            raise ValueError("Records list cannot be empty")
-        
-        for i, record in enumerate(records):
-            if not isinstance(record, dict):
-                raise ValueError(
-                    f"Record at index {i} is not a dict (type: {type(record).__name__})"
-                )
-            
-            # Validate required fields
-            if 'id' not in record:
-                raise ValueError(f"Record at index {i} is missing required field: 'id'")
-            if 'vector' not in record:
-                raise ValueError(f"Record at index {i} is missing required field: 'vector'")
-            
-            # Validate vector format
-            vector = record['vector']
-            if not isinstance(vector, (list, tuple)):
-                raise ValueError(
-                    f"Record at index {i} has invalid vector type: {type(vector).__name__}. "
-                    "Expected list or tuple of floats."
-                )
-            
-            if not vector:
-                raise ValueError(f"Record at index {i} has empty vector")
-    
-    def validate_query_vector(self, vector: List[float], top_k: int) -> None:
-        """Validate query parameters.
-        
-        Args:
-            vector: Query vector to validate.
-            top_k: Number of results to validate.
-        
-        Raises:
-            ValueError: If parameters are invalid.
-        """
-        if not isinstance(vector, (list, tuple)):
-            raise ValueError(
-                f"Query vector must be a list or tuple, got {type(vector).__name__}"
-            )
-        
-        if not vector:
-            raise ValueError("Query vector cannot be empty")
-        
-        if not isinstance(top_k, int) or top_k <= 0:
-            raise ValueError(f"top_k must be a positive integer, got {top_k}")
-    
-    def delete(
-        self,
-        ids: List[str],
-        trace: Optional[Any] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Delete records from the vector store by IDs.
-        
-        Args:
-            ids: List of record IDs to delete.
-            trace: Optional TraceContext for observability.
-            **kwargs: Provider-specific parameters.
-        
-        Raises:
-            ValueError: If ids list is empty.
-            RuntimeError: If the delete operation fails.
-            NotImplementedError: If the provider doesn't support deletion.
-        
-        Notes:
-            This is an optional operation. Providers that don't support
-            deletion should raise NotImplementedError with a clear message.
-        """
+
         raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement delete() method. "
-            "This operation is optional and provider-dependent."
+            f"{self.__class__.__name__} does not implement delete"
         )
-    
-    def clear(
-        self,
-        collection_name: Optional[str] = None,
-        trace: Optional[Any] = None,
-        **kwargs: Any,
-    ) -> None:
-        """Clear all records from the vector store or a specific collection.
-        
-        Args:
-            collection_name: Optional collection name to clear. If None, clears default collection.
-            trace: Optional TraceContext for observability.
-            **kwargs: Provider-specific parameters.
-        
-        Raises:
-            RuntimeError: If the clear operation fails.
-            NotImplementedError: If the provider doesn't support clearing.
-        
-        Notes:
-            This is primarily for testing and development. Use with caution in production.
+
+    def clear(self, **kwargs: Any) -> None:
+        """可选能力：清空当前集合/索引。
+
+        默认不实现，要求具体后端按需覆盖。
         """
+
         raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement clear() method. "
-            "This operation is optional and primarily for testing."
+            f"{self.__class__.__name__} does not implement clear"
         )

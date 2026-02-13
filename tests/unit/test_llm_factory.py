@@ -1,7 +1,14 @@
-"""Unit tests for LLM Factory.
+"""LLM 工厂层与基础校验逻辑单元测试。
 
-Tests the factory pattern implementation, provider routing logic,
-and error handling for the LLM abstraction layer.
+这个测试文件主要回答三个问题：
+1. `LLMFactory` 是否能正确注册/创建 provider。
+2. 配置异常时是否给出可读错误信息。
+3. `BaseLLM.validate_messages` 是否能拦截非法输入。
+
+给代码小白的阅读建议：
+- 先看 `FakeLLM`（一个最小可运行模型），理解“工厂创建出来的对象长什么样”。
+- 再看 `TestLLMFactory`，理解“配置 -> 实例”的流程。
+- 最后看 `TestBaseLLM`，理解“输入先校验再调用”的防错思路。
 """
 
 import pytest
@@ -12,7 +19,16 @@ from src.libs.llm.llm_factory import LLMFactory
 
 
 def create_test_config(provider="fake", **overrides):
-    """Helper to create complete test configuration."""
+    """构造最小可运行测试配置（YAML 字符串）。
+
+    参数说明：
+    - provider: 本次测试要使用的 llm provider 名称。
+    - **overrides: 用 `section.field=value` 覆盖默认配置，
+      例如 `llm.model="gpt-4"`。
+
+    设计原因：
+    - 单测经常只想改一个字段，`overrides` 能避免重复拷贝整份配置。
+    """
     base_config = {
         "llm": {
             "provider": provider,
@@ -76,14 +92,20 @@ def create_test_config(provider="fake", **overrides):
 
 
 class FakeLLM(BaseLLM):
-    """Mock LLM implementation for testing."""
+    """用于测试的假 LLM 实现。
+
+    特点：
+    - 输出固定，保证测试结果稳定可预测。
+    - 仍然调用 `validate_messages`，确保测试覆盖真实校验路径。
+    """
     
     def __init__(self, settings, **kwargs):
+        """保存传入参数，便于断言工厂是否正确透传。"""
         self.settings = settings
         self.kwargs = kwargs
     
     def chat(self, messages, trace=None, **kwargs):
-        """Return deterministic test response."""
+        """返回固定响应，避免外部依赖影响测试。"""
         self.validate_messages(messages)
         return ChatResponse(
             content="fake response",
@@ -93,7 +115,7 @@ class FakeLLM(BaseLLM):
 
 
 class TestLLMFactory:
-    """Test suite for LLMFactory."""
+    """验证 LLMFactory 的注册、路由与报错行为。"""
     
     def setup_method(self):
         """Clear provider registry before each test."""
@@ -193,7 +215,7 @@ class TestLLMFactory:
 
 
 class TestBaseLLM:
-    """Test suite for BaseLLM validation logic."""
+    """验证 BaseLLM 的消息输入校验逻辑。"""
     
     def test_validate_messages_success(self):
         """Test validation passes for valid messages."""
@@ -240,7 +262,7 @@ class TestBaseLLM:
 
 
 class TestFakeLLMIntegration:
-    """Integration tests for FakeLLM mock."""
+    """验证 FakeLLM 在真实调用链中的行为。"""
     
     def test_chat_returns_expected_response(self):
         """Test FakeLLM chat returns proper ChatResponse."""

@@ -1,236 +1,77 @@
-"""Factory for creating LLM provider instances.
+"""根据配置创建 LLM 提供者实例的工厂模块。
 
-This module implements the Factory Pattern to instantiate the appropriate
-LLM provider based on configuration, enabling configuration-driven selection
-of different backends without code changes.
+把它理解为“模型调度中心”：
+- 注册阶段：告诉系统有哪些 provider 可用。
+- 创建阶段：根据 `settings.llm.provider` 选择对应实现并实例化。
 
-Supports both text-only LLMs and Vision LLMs (multimodal).
+这样上层业务不需要 `if provider == "openai" ...` 这类分支逻辑。
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.libs.llm.base_llm import BaseLLM
-from src.libs.llm.base_vision_llm import BaseVisionLLM
-
-if TYPE_CHECKING:
-    from src.core.settings import Settings
-
-
-# Import and register Vision LLM providers at module load time
-def _register_vision_providers() -> None:
-    """Register all Vision LLM provider implementations.
-    
-    This function is called at module import time to populate the
-    Vision LLM provider registry. Add new providers here as they
-    are implemented.
-    """
-    try:
-        from src.libs.llm.azure_vision_llm import AzureVisionLLM
-        from src.libs.llm.llm_factory import LLMFactory
-        LLMFactory.register_vision_provider("azure", AzureVisionLLM)
-    except ImportError:
-        # Provider not yet implemented, skip registration
-        pass
 
 
 class LLMFactory:
-    """Factory for creating LLM provider instances.
-    
-    This factory reads the provider configuration from settings and instantiates
-    the corresponding LLM implementation. Supports both text-only LLMs and
-    Vision LLMs (multimodal).
-    
-    Design Principles Applied:
-    - Factory Pattern: Centralizes object creation logic.
-    - Config-Driven: Provider selection based on settings.yaml.
-    - Fail-Fast: Raises clear errors for unknown providers.
-    - Separation: Text and Vision LLM registries are separate.
-    """
-    
-    # Registry of supported text-only LLM providers (to be populated in B7.x tasks)
+    """基于注册表的 LLM 提供者工厂。"""
+
     _PROVIDERS: dict[str, type[BaseLLM]] = {}
-    
-    # Registry of supported Vision LLM providers (to be populated in B9+ tasks)
-    _VISION_PROVIDERS: dict[str, type[BaseVisionLLM]] = {}
-    
+
     @classmethod
-    def register_provider(cls, name: str, provider_class: type[BaseLLM]) -> None:
-        """Register a new LLM provider implementation.
-        
-        This method allows provider implementations to register themselves
-        with the factory, supporting extensibility.
-        
-        Args:
-            name: The provider identifier (e.g., 'openai', 'azure', 'ollama').
-            provider_class: The BaseLLM subclass implementing the provider.
-        
-        Raises:
-            ValueError: If provider_class doesn't inherit from BaseLLM.
+    def register_provider(cls, name: str, provider_cls: type[BaseLLM]) -> None:
+        """注册一个 LLM 提供者。
+
+        参数说明：
+        - name: provider 名称（例如 `openai`、`azure`）。
+          设计上会自动转小写，避免大小写导致的配置失败。
+        - provider_cls: provider 对应的类，必须继承 BaseLLM。
         """
-        if not issubclass(provider_class, BaseLLM):
-            raise ValueError(
-                f"Provider class {provider_class.__name__} must inherit from BaseLLM"
-            )
-        cls._PROVIDERS[name.lower()] = provider_class
-    
+
+        normalized_name = name.strip().lower()
+        if not normalized_name:
+            raise ValueError("Provider name cannot be empty")
+
+        if not issubclass(provider_cls, BaseLLM):
+            raise ValueError("Provider class must inherit from BaseLLM")
+
+        cls._PROVIDERS[normalized_name] = provider_cls
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
     @classmethod
-    def create(cls, settings: Settings, **override_kwargs: Any) -> BaseLLM:
-        """Create an LLM instance based on configuration.
-        
-        Args:
-            settings: The application settings containing LLM configuration.
-            **override_kwargs: Optional parameters to override config values.
-        
-        Returns:
-            An instance of the configured LLM provider.
-        
-        Raises:
-            ValueError: If the configured provider is not supported.
-            AttributeError: If required configuration fields are missing.
-        
-        Example:
-            >>> settings = Settings.load('config/settings.yaml')
-            >>> llm = LLMFactory.create(settings)
-            >>> response = llm.chat([Message(role='user', content='Hello')])
+    def create(cls, settings: Any, **kwargs: Any) -> BaseLLM:
+        """根据 `settings.llm.provider` 创建提供者实例。
+
+        参数说明：
+        - settings: 全局配置对象，要求包含 `settings.llm.provider`。
+        - **kwargs: 额外构造参数，会透传给 provider 构造函数。
+
+        失败场景：
+        - provider 未配置：抛 ValueError（提示缺少 llm.provider）。
+        - provider 未注册：抛 ValueError（附带可用 provider 列表）。
         """
-        # Extract provider name from settings
-        try:
-            provider_name = settings.llm.provider.lower()
-        except AttributeError as e:
+
+        provider_name = getattr(getattr(settings, "llm", None), "provider", None)
+        if not isinstance(provider_name, str) or not provider_name.strip():
+            raise ValueError("Missing required setting: llm.provider")
+
+        normalized_name = provider_name.strip().lower()
+        provider_cls = cls._PROVIDERS.get(normalized_name)
+        if provider_cls is None:
+            available = ", ".join(cls.list_providers()) or "(none)"
             raise ValueError(
-                "Missing required configuration: settings.llm.provider. "
-                "Please ensure 'llm.provider' is specified in settings.yaml"
-            ) from e
-        
-        # Look up provider class in registry
-        provider_class = cls._PROVIDERS.get(provider_name)
-        
-        if provider_class is None:
-            available = ", ".join(sorted(cls._PROVIDERS.keys())) if cls._PROVIDERS else "none"
-            raise ValueError(
-                f"Unsupported LLM provider: '{provider_name}'. "
-                f"Available providers: {available}. "
-                f"Provider implementations will be added in tasks B7.1-B7.2."
+                f"Unsupported LLM provider '{provider_name}'. "
+                f"Available providers: {available}"
             )
-        
-        # Instantiate the provider
-        # Provider classes should accept settings and optional kwargs
-        try:
-            return provider_class(settings=settings, **override_kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to instantiate LLM provider '{provider_name}': {e}"
-            ) from e
-    
+
+        return provider_cls(settings, **kwargs)
+
     @classmethod
     def list_providers(cls) -> list[str]:
-        """List all registered provider names.
-        
-        Returns:
-            Sorted list of available provider identifiers.
-        """
-        return sorted(cls._PROVIDERS.keys())
-    
-    @classmethod
-    def register_vision_provider(
-        cls,
-        name: str,
-        provider_class: type[BaseVisionLLM]
-    ) -> None:
-        """Register a new Vision LLM provider implementation.
-        
-        This method allows Vision LLM provider implementations to register
-        themselves with the factory, supporting extensibility.
-        
-        Args:
-            name: The provider identifier (e.g., 'azure', 'ollama').
-            provider_class: The BaseVisionLLM subclass implementing the provider.
-        
-        Raises:
-            ValueError: If provider_class doesn't inherit from BaseVisionLLM.
-        """
-        if not issubclass(provider_class, BaseVisionLLM):
-            raise ValueError(
-                f"Provider class {provider_class.__name__} must inherit from BaseVisionLLM"
-            )
-        cls._VISION_PROVIDERS[name.lower()] = provider_class
-    
-    @classmethod
-    def create_vision_llm(
-        cls,
-        settings: Settings,
-        **override_kwargs: Any
-    ) -> BaseVisionLLM:
-        """Create a Vision LLM instance based on configuration.
-        
-        Vision LLMs support multimodal input (text + image) and are used for
-        tasks like image captioning, visual question answering, and document
-        understanding with embedded images.
-        
-        Args:
-            settings: The application settings containing Vision LLM configuration.
-            **override_kwargs: Optional parameters to override config values.
-        
-        Returns:
-            An instance of the configured Vision LLM provider.
-        
-        Raises:
-            ValueError: If the configured provider is not supported or configuration is missing.
-            RuntimeError: If provider instantiation fails.
-        
-        Example:
-            >>> settings = Settings.load('config/settings.yaml')
-            >>> vision_llm = LLMFactory.create_vision_llm(settings)
-            >>> image = ImageInput(path="diagram.png")
-            >>> response = vision_llm.chat_with_image("Describe this", image)
-        """
-        # Extract provider name from settings
-        # Vision LLM config may be nested under settings.vision_llm or settings.llm
-        try:
-            # Try vision_llm section first
-            if hasattr(settings, 'vision_llm') and hasattr(settings.vision_llm, 'provider'):
-                provider_name = settings.vision_llm.provider.lower()
-            # Fallback to llm.provider (some providers support both text and vision)
-            elif hasattr(settings, 'llm') and hasattr(settings.llm, 'provider'):
-                provider_name = settings.llm.provider.lower()
-            else:
-                raise AttributeError("No vision_llm or llm provider configuration found")
-        except AttributeError as e:
-            raise ValueError(
-                "Missing required configuration: settings.vision_llm.provider or settings.llm.provider. "
-                "Please ensure 'vision_llm.provider' or 'llm.provider' is specified in settings.yaml"
-            ) from e
-        
-        # Look up provider class in vision registry
-        provider_class = cls._VISION_PROVIDERS.get(provider_name)
-        
-        if provider_class is None:
-            available = ", ".join(sorted(cls._VISION_PROVIDERS.keys())) if cls._VISION_PROVIDERS else "none"
-            raise ValueError(
-                f"Unsupported Vision LLM provider: '{provider_name}'. "
-                f"Available Vision LLM providers: {available}. "
-                f"Vision LLM implementations will be added in tasks B9+."
-            )
-        
-        # Instantiate the provider
-        try:
-            return provider_class(settings=settings, **override_kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to instantiate Vision LLM provider '{provider_name}': {e}"
-            ) from e
-    
-    @classmethod
-    def list_vision_providers(cls) -> list[str]:
-        """List all registered Vision LLM provider names.
-        
-        Returns:
-            Sorted list of available Vision LLM provider identifiers.
-        """
-        return sorted(cls._VISION_PROVIDERS.keys())
+        """返回已注册 provider 名称列表（字母序）。
 
+        为什么排序：
+        - 让日志、错误信息、测试断言更稳定，避免注册顺序影响输出。
+        """
 
-# Register Vision LLM providers at module load time
-_register_vision_providers()
+        return sorted(cls._PROVIDERS)

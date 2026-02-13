@@ -6,9 +6,8 @@ using mocked HTTP responses to ensure reliable, fast, and offline testing.
 
 from __future__ import annotations
 
-import sys
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -48,14 +47,12 @@ def mock_settings_azure() -> Any:
 
 
 @pytest.fixture
-def mock_openai_response() -> Mock:
-    """Create a mock OpenAI embeddings response."""
-    response = Mock()
-    response.data = [
-        Mock(embedding=[0.1, 0.2, 0.3]),
-        Mock(embedding=[0.4, 0.5, 0.6]),
+def mock_batch_vectors() -> list[list[float]]:
+    """Create mock embedding vectors returned by LlamaIndex wrappers."""
+    return [
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
     ]
-    return response
 
 
 # =============================================================================
@@ -98,15 +95,18 @@ class TestOpenAIEmbedding:
         
         assert embedding.base_url == "https://custom.api.com/v1"
     
-    @patch('openai.OpenAI')
+    @patch.object(OpenAIEmbedding, "_load_llamaindex_class")
     def test_embed_success(
-        self, mock_openai_class: Mock, mock_settings_openai: Any, mock_openai_response: Mock
+        self,
+        mock_loader: Mock,
+        mock_settings_openai: Any,
+        mock_batch_vectors: list[list[float]],
     ) -> None:
         """Test successful embedding generation."""
-        # Mock OpenAI client
-        mock_client = Mock()
-        mock_client.embeddings.create.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_client
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.return_value = mock_batch_vectors
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         # Create embedding instance and call embed
         embedding = OpenAIEmbedding(mock_settings_openai, api_key="test-key")
@@ -116,34 +116,33 @@ class TestOpenAIEmbedding:
         assert len(result) == 2
         assert result[0] == [0.1, 0.2, 0.3]
         assert result[1] == [0.4, 0.5, 0.6]
-        
-        # Verify API call
-        mock_client.embeddings.create.assert_called_once_with(
-            input=["hello", "world"],
+
+        mock_provider_cls.assert_called_once_with(
             model="text-embedding-3-small",
+            api_key="test-key",
+            api_base=OpenAIEmbedding.DEFAULT_BASE_URL,
+            timeout=OpenAIEmbedding.DEFAULT_TIMEOUT,
             dimensions=1536,
         )
+        mock_embedder.get_text_embedding_batch.assert_called_once_with(["hello", "world"])
     
-    @patch('openai.OpenAI')
+    @patch.object(OpenAIEmbedding, "_load_llamaindex_class")
     def test_embed_without_dimensions(
-        self, mock_openai_class: Mock, mock_settings_openai: Any
+        self, mock_loader: Mock, mock_settings_openai: Any
     ) -> None:
         """Test embedding without dimensions parameter."""
         mock_settings_openai.embedding.dimensions = None
-        
-        # Create a mock response with just 1 embedding for 1 text
-        mock_response = Mock()
-        mock_response.data = [Mock(embedding=[0.1, 0.2, 0.3])]
-        
-        mock_client = Mock()
-        mock_client.embeddings.create.return_value = mock_response
-        mock_openai_class.return_value = mock_client
+
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.return_value = [[0.1, 0.2, 0.3]]
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         embedding = OpenAIEmbedding(mock_settings_openai, api_key="test-key")
         embedding.embed(["test"])
         
         # Verify dimensions not passed when None
-        call_kwargs = mock_client.embeddings.create.call_args[1]
+        call_kwargs = mock_provider_cls.call_args[1]
         assert "dimensions" not in call_kwargs
     
     def test_embed_empty_list_raises(
@@ -155,32 +154,31 @@ class TestOpenAIEmbedding:
         with pytest.raises(ValueError, match="Texts list cannot be empty"):
             embedding.embed([])
     
-    @patch('openai.OpenAI')
+    @patch.object(OpenAIEmbedding, "_load_llamaindex_class")
     def test_embed_api_error(
-        self, mock_openai_class: Mock, mock_settings_openai: Any
+        self, mock_loader: Mock, mock_settings_openai: Any
     ) -> None:
         """Test handling of API errors."""
-        mock_client = Mock()
-        mock_client.embeddings.create.side_effect = Exception("API Error")
-        mock_openai_class.return_value = mock_client
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.side_effect = Exception("API Error")
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         embedding = OpenAIEmbedding(mock_settings_openai, api_key="test-key")
         
         with pytest.raises(OpenAIEmbeddingError, match="OpenAI Embeddings API call failed"):
             embedding.embed(["test"])
     
-    @patch('openai.OpenAI')
+    @patch.object(OpenAIEmbedding, "_load_llamaindex_class")
     def test_embed_length_mismatch(
-        self, mock_openai_class: Mock, mock_settings_openai: Any
+        self, mock_loader: Mock, mock_settings_openai: Any
     ) -> None:
         """Test handling of response length mismatch."""
         # Return only 1 embedding for 2 inputs
-        mock_response = Mock()
-        mock_response.data = [Mock(embedding=[0.1, 0.2])]
-        
-        mock_client = Mock()
-        mock_client.embeddings.create.return_value = mock_response
-        mock_openai_class.return_value = mock_client
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.return_value = [[0.1, 0.2]]
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         embedding = OpenAIEmbedding(mock_settings_openai, api_key="test-key")
         
@@ -279,14 +277,18 @@ class TestAzureEmbedding:
         
         assert embedding.deployment_name == "text-embedding-ada-002"
     
-    @patch('openai.AzureOpenAI')
+    @patch.object(AzureEmbedding, "_load_llamaindex_class")
     def test_embed_success(
-        self, mock_azure_class: Mock, mock_settings_azure: Any, mock_openai_response: Mock
+        self,
+        mock_loader: Mock,
+        mock_settings_azure: Any,
+        mock_batch_vectors: list[list[float]],
     ) -> None:
         """Test successful embedding generation with Azure."""
-        mock_client = Mock()
-        mock_client.embeddings.create.return_value = mock_openai_response
-        mock_azure_class.return_value = mock_client
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.return_value = mock_batch_vectors
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         embedding = AzureEmbedding(
             mock_settings_azure,
@@ -298,21 +300,26 @@ class TestAzureEmbedding:
         assert len(result) == 2
         assert result[0] == [0.1, 0.2, 0.3]
         assert result[1] == [0.4, 0.5, 0.6]
-        
-        # Verify API call uses deployment name
-        mock_client.embeddings.create.assert_called_once_with(
-            input=["hello", "world"],
-            model="my-embedding-deployment",
+
+        # Verify API call uses model + azure deployment
+        mock_provider_cls.assert_called_once_with(
+            model="text-embedding-ada-002",
+            api_key="test-key",
+            azure_endpoint="https://test.openai.azure.com/",
+            api_version="2024-02-01",
+            azure_deployment="my-embedding-deployment",
         )
+        mock_embedder.get_text_embedding_batch.assert_called_once_with(["hello", "world"])
     
-    @patch('openai.AzureOpenAI')
+    @patch.object(AzureEmbedding, "_load_llamaindex_class")
     def test_embed_api_error(
-        self, mock_azure_class: Mock, mock_settings_azure: Any
+        self, mock_loader: Mock, mock_settings_azure: Any
     ) -> None:
         """Test handling of Azure API errors."""
-        mock_client = Mock()
-        mock_client.embeddings.create.side_effect = Exception("Azure API Error")
-        mock_azure_class.return_value = mock_client
+        mock_embedder = Mock()
+        mock_embedder.get_text_embedding_batch.side_effect = Exception("Azure API Error")
+        mock_provider_cls = Mock(return_value=mock_embedder)
+        mock_loader.return_value = mock_provider_cls
         
         embedding = AzureEmbedding(
             mock_settings_azure,

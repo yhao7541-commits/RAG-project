@@ -1,11 +1,13 @@
-"""Unit tests for VectorStore Factory and Base VectorStore.
+"""VectorStore 抽象契约与工厂行为单元测试。
 
-Test Coverage:
-- Factory pattern: provider registration, creation, and routing
-- Configuration-driven instantiation
-- Error handling for unknown/missing providers
-- Validation logic in BaseVectorStore
-- Contract testing for interface compliance
+测试目标：
+1. `BaseVectorStore` 的参数校验（records/vector/top_k）是否可靠。
+2. `VectorStoreFactory` 的注册、路由与报错是否符合预期。
+3. 用 `FakeVectorStore` 验证最小 contract（upsert/query）可被上层稳定调用。
+
+给初学者的阅读建议：
+- 先看 `FakeVectorStore`，它展示了一个最简单的“内存向量库”写法。
+- 再看 `TestBaseVectorStore`，理解接口层为什么要先做参数校验。
 """
 
 from typing import Any, Dict, List, Optional
@@ -29,6 +31,10 @@ class FakeVectorStore(BaseVectorStore):
         Args:
             settings: Optional settings (unused in fake).
             **kwargs: Additional parameters (unused).
+
+        参数设计说明：
+        - storage 用 dict 存储，方便用 id 直接覆盖（模拟 upsert 语义）。
+        - upsert_count/query_count 让测试可验证方法是否被调用。
         """
         self.settings = settings
         self.storage: Dict[str, Dict[str, Any]] = {}
@@ -41,7 +47,12 @@ class FakeVectorStore(BaseVectorStore):
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
-        """Store records in memory."""
+        """把记录写入内存。
+
+        参数说明：
+        - records: 一批待写入记录，最少要有 id 与 vector。
+        - trace/**kwargs: 预留参数，保持与真实实现签名一致。
+        """
         self.validate_records(records)
         self.upsert_count += 1
         
@@ -56,7 +67,13 @@ class FakeVectorStore(BaseVectorStore):
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
-        """Return stored records with fake similarity scores."""
+        """查询并返回假分数结果。
+
+        参数说明：
+        - vector: 查询向量（本 fake 实现只做校验，不做真实相似度计算）。
+        - top_k: 最多返回多少条结果。
+        - filters: 元数据过滤条件（可选）。
+        """
         self.validate_query_vector(vector, top_k)
         self.query_count += 1
         
@@ -83,7 +100,7 @@ class FakeVectorStore(BaseVectorStore):
 
 
 class TestBaseVectorStore:
-    """Tests for BaseVectorStore abstract class."""
+    """验证 BaseVectorStore 的通用输入校验规则。"""
     
     def test_validate_records_success(self):
         """Valid records should pass validation."""
@@ -172,7 +189,7 @@ class TestBaseVectorStore:
 
 
 class TestFakeVectorStore:
-    """Tests for FakeVectorStore implementation."""
+    """验证 FakeVectorStore 的最小功能行为。"""
     
     def test_upsert_single_record(self):
         """Upserting single record should store it."""
@@ -287,7 +304,7 @@ class TestFakeVectorStore:
 
 
 class TestVectorStoreFactory:
-    """Tests for VectorStoreFactory."""
+    """验证 VectorStoreFactory 的注册、创建与错误信息。"""
     
     def setup_method(self):
         """Reset factory registry before each test."""

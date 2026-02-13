@@ -1,11 +1,9 @@
-"""Unit tests for Reranker Factory and Base Reranker.
+"""Reranker 抽象层与工厂层单元测试。
 
-Test Coverage:
-- Factory pattern: provider registration, creation, and routing
-- Configuration-driven instantiation
-- Error handling for unknown/missing providers
-- Validation logic in BaseReranker
-- NoneReranker fallback behavior
+测试目标：
+1. `BaseReranker` 的查询与候选输入校验是否严格。
+2. `RerankerFactory` 是否正确处理 enabled/provider 回退规则。
+3. `NoneReranker` 是否保持原顺序返回（禁用重排场景）。
 """
 
 from typing import Any, Dict, List, Optional
@@ -24,6 +22,8 @@ class FakeReranker(BaseReranker):
     """
     
     def __init__(self, settings: Any = None, **kwargs: Any) -> None:
+        """保存参数并记录调用次数，便于测试断言。"""
+
         self.settings = settings
         self.kwargs = kwargs
         self.call_count = 0
@@ -35,6 +35,8 @@ class FakeReranker(BaseReranker):
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
+        """按 score 降序返回候选，模拟“重排后更相关在前”的效果。"""
+
         self.validate_query(query)
         self.validate_candidates(candidates)
         self.call_count += 1
@@ -42,7 +44,7 @@ class FakeReranker(BaseReranker):
 
 
 class TestBaseReranker:
-    """Tests for BaseReranker validation helpers."""
+    """验证 BaseReranker 的输入校验助手。"""
     
     def test_validate_query_success(self):
         reranker = FakeReranker()
@@ -79,7 +81,7 @@ class TestBaseReranker:
 
 
 class TestNoneReranker:
-    """Tests for NoneReranker behavior."""
+    """验证 NoneReranker 的“无改动回退”行为。"""
     
     def test_rerank_preserves_order(self):
         reranker = NoneReranker()
@@ -94,7 +96,7 @@ class TestNoneReranker:
 
 
 class TestRerankerFactory:
-    """Tests for RerankerFactory."""
+    """验证 RerankerFactory 的注册、创建与回退规则。"""
     
     def setup_method(self) -> None:
         RerankerFactory._PROVIDERS.clear()

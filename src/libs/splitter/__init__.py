@@ -1,23 +1,9 @@
-"""
-Splitter Module.
+"""Splitter 抽象层对外导出。
 
-This package contains text splitter abstractions and implementations:
-- Base splitter class
-- Splitter factory
-- Implementations (Recursive, Semantic, FixedLength)
+为了让上层代码导入路径稳定，这里统一导出基础抽象和工厂类。
 """
 
 from src.libs.splitter.base_splitter import BaseSplitter
 from src.libs.splitter.splitter_factory import SplitterFactory
 
-# Import concrete implementations (they auto-register with factory)
-try:
-    from src.libs.splitter.recursive_splitter import RecursiveSplitter
-except ImportError:
-    RecursiveSplitter = None  # type: ignore[assignment, misc]
-
-__all__ = [
-    "BaseSplitter",
-    "SplitterFactory",
-    "RecursiveSplitter",
-]
+__all__ = ["BaseSplitter", "SplitterFactory"]

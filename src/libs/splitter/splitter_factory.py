@@ -1,116 +1,86 @@
-"""Factory for creating Splitter instances.
+"""Splitter 提供者工厂。
 
-This module implements the Factory Pattern to instantiate the appropriate
-Splitter provider based on configuration, enabling configuration-driven selection
-of different splitting strategies without code changes.
+职责：
+1) 维护 provider 注册表（名称 -> 类）。
+2) 按 `settings.ingestion.splitter` 创建具体切分器实例。
+3) 在配置错误时给出清晰、可执行的报错信息。
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.libs.splitter.base_splitter import BaseSplitter
 
-if TYPE_CHECKING:
-    from src.core.settings import Settings
-
-
-def _register_builtin_providers() -> None:
-    """Register built-in splitter providers.
-    
-    This function is called automatically when the module is imported.
-    It registers all available splitter implementations with the factory.
-    """
-    # Import here to avoid circular imports and handle missing dependencies gracefully
-    try:
-        from src.libs.splitter.recursive_splitter import RecursiveSplitter
-        SplitterFactory.register_provider("recursive", RecursiveSplitter)
-    except ImportError:
-        pass  # RecursiveSplitter not available (missing langchain dependency)
-
 
 class SplitterFactory:
-    """Factory for creating Splitter provider instances.
-    
-    This factory reads the splitter configuration from settings and instantiates
-    the corresponding Splitter implementation. Supported providers will be added
-    in subsequent tasks (B7.5).
-    
-    Design Principles Applied:
-    - Factory Pattern: Centralizes object creation logic.
-    - Config-Driven: Provider selection based on settings.yaml.
-    - Fail-Fast: Raises clear errors for unknown providers.
-    """
-    
+    """基于注册表的 Splitter 工厂。"""
+
     _PROVIDERS: dict[str, type[BaseSplitter]] = {}
-    
+
     @classmethod
-    def register_provider(cls, name: str, provider_class: type[BaseSplitter]) -> None:
-        """Register a new Splitter provider implementation.
-        
-        Args:
-            name: The provider identifier (e.g., 'recursive', 'semantic', 'fixed').
-            provider_class: The BaseSplitter subclass implementing the provider.
-        
-        Raises:
-            ValueError: If provider_class doesn't inherit from BaseSplitter.
+    def register_provider(
+        cls,
+        provider_name: str,
+        provider_class: type[BaseSplitter],
+    ) -> None:
+        """注册切分器实现类。
+
+        参数说明：
+        - provider_name: 切分器名称（如 `recursive`）。
+        - provider_class: 切分器类，必须继承 BaseSplitter。
         """
+
+        normalized_name = provider_name.strip().lower()
+        if not normalized_name:
+            raise ValueError("Provider name cannot be empty")
+
         if not issubclass(provider_class, BaseSplitter):
-            raise ValueError(
-                f"Provider class {provider_class.__name__} must inherit from BaseSplitter"
-            )
-        cls._PROVIDERS[name.lower()] = provider_class
-    
+            raise ValueError("Provider class must inherit from BaseSplitter")
+
+        cls._PROVIDERS[normalized_name] = provider_class
+
     @classmethod
-    def create(cls, settings: Settings, **override_kwargs: Any) -> BaseSplitter:
-        """Create a Splitter instance based on configuration.
-        
-        Args:
-            settings: The application settings containing ingestion configuration.
-            **override_kwargs: Optional parameters to override config values.
-        
-        Returns:
-            An instance of the configured Splitter provider.
-        
-        Raises:
-            ValueError: If the configured provider is not supported or missing.
+    def create(cls, settings: Any, **overrides: Any) -> BaseSplitter:
+        """根据配置创建切分器实例。
+
+        参数说明：
+        - settings: 全局配置对象，要求包含 `settings.ingestion.splitter`。
+        - **overrides: 单次覆盖构造参数（常用于测试或实验）。
         """
-        try:
-            ingestion_settings = settings.ingestion
-            if ingestion_settings is None:
-                raise AttributeError("settings.ingestion is None")
-            provider_name = ingestion_settings.splitter.lower()
-        except AttributeError as e:
+
+        # 步骤 1：读取配置。这里要求 settings.ingestion.splitter 必须存在。
+        ingestion_settings = getattr(settings, "ingestion", None)
+        splitter_raw = getattr(ingestion_settings, "splitter", None)
+
+        if not isinstance(splitter_raw, str) or not splitter_raw.strip():
             raise ValueError(
                 "Missing required configuration: settings.ingestion.splitter. "
-                "Please ensure 'ingestion.splitter' is specified in settings.yaml"
-            ) from e
-        
-        provider_class = cls._PROVIDERS.get(provider_name)
-        if provider_class is None:
-            available = ", ".join(sorted(cls._PROVIDERS.keys())) if cls._PROVIDERS else "none"
-            raise ValueError(
-                f"Unsupported Splitter provider: '{provider_name}'. "
-                f"Available providers: {available}. "
-                "Provider implementations will be added in task B7.5."
+                "Please set splitter provider in settings.yaml"
             )
-        
-        try:
-            return provider_class(settings=settings, **override_kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to instantiate Splitter provider '{provider_name}': {e}"
-            ) from e
-    
+
+        splitter_name = splitter_raw.strip().lower()
+
+        # 步骤 2：按名称查找注册表；若未注册则提示可用项与后续任务编号。
+        splitter_class = cls._PROVIDERS.get(splitter_name)
+        if splitter_class is None:
+            available_providers = cls.list_providers()
+            available_text = ", ".join(available_providers) if available_providers else "none"
+            raise ValueError(
+                f"Unsupported Splitter provider: '{splitter_raw}'. "
+                f"Available providers: {available_text}. "
+                "If you need default recursive splitter support, complete B7.5 first."
+            )
+
+        # 步骤 3：实例化并返回。这里允许传入 overrides 覆盖构造参数。
+        splitter_constructor: Any = splitter_class
+        return splitter_constructor(settings=settings, **overrides)
+
     @classmethod
     def list_providers(cls) -> list[str]:
-        """List all registered provider names.
-        
-        Returns:
-            Sorted list of available provider identifiers.
+        """返回已注册 provider 名称列表（字母序）。
+
+        使用字母序可避免“注册顺序不同导致日志顺序变化”。
         """
+
         return sorted(cls._PROVIDERS.keys())
-
-
-# Auto-register built-in providers when module is imported
-_register_builtin_providers()
