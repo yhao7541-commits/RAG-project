@@ -9,7 +9,9 @@
 """
 
 from src.libs.llm.azure_llm import AzureLLM, AzureLLMError
+from src.libs.llm.azure_vision_llm import AzureVisionLLM, AzureVisionLLMError
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.llm.base_vision_llm import BaseVisionLLM, ImageInput
 from src.libs.llm.deepseek_llm import DeepSeekLLM, DeepSeekLLMError
 from src.libs.llm.llm_factory import LLMFactory
 from src.libs.llm.ollama_llm import OllamaLLM, OllamaLLMError
@@ -27,11 +29,15 @@ if "deepseek" not in LLMFactory._PROVIDERS:
     LLMFactory.register_provider("deepseek", DeepSeekLLM)
 if "ollama" not in LLMFactory._PROVIDERS:
     LLMFactory.register_provider("ollama", OllamaLLM)
+if "azure" not in LLMFactory._VISION_PROVIDERS:
+    LLMFactory.register_vision_provider("azure", AzureVisionLLM)
 
 __all__ = [
     "BaseLLM",
     "ChatResponse",
     "Message",
+    "BaseVisionLLM",
+    "ImageInput",
     "LLMFactory",
     "OpenAILLM",
     "OpenAILLMError",
@@ -41,4 +47,6 @@ __all__ = [
     "DeepSeekLLMError",
     "OllamaLLM",
     "OllamaLLMError",
+    "AzureVisionLLM",
+    "AzureVisionLLMError",
 ]

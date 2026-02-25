@@ -4,4 +4,6 @@ Evaluation Module.
 This package contains evaluation runner and related utilities.
 """
 
-__all__ = []
+from src.observability.evaluation.runner import EvaluationRunner
+
+__all__ = ["EvaluationRunner"]

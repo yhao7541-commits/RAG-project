@@ -9,4 +9,6 @@ This package contains the core business logic including:
 - Trace collection
 """
 
+from src.core.types import Chunk, ChunkRecord, Document
 
+__all__ = ["Document", "Chunk", "ChunkRecord"]

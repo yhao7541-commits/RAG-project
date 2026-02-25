@@ -94,7 +94,7 @@ class OpenAILLM(BaseLLM):
         if self.use_langchain:
             return self._chat_via_langchain(messages, **kwargs)
         return self._chat_via_http(messages, **kwargs)
-
+#HTTP 主路径：组 payload -> 发请求 -> 解析 JSON -> 标准化成 ChatResponse。 
     def _chat_via_http(self, messages: Sequence[Message], **kwargs: Any) -> ChatResponse:
         """默认路径：通过 HTTP 调 OpenAI `/chat/completions`。"""
 

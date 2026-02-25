@@ -8,6 +8,7 @@ from __future__ import annotations
 import sys
 
 from src.core.settings import SettingsError, load_settings
+from src.mcp_server import MCPServer
 from src.observability.logger import get_logger
 
 
@@ -27,8 +28,13 @@ def main() -> None:
         settings.vector_store.provider,
     )
 
-    # Placeholder: MCP server startup will be implemented in later stages.
-    logger.info("MCP server bootstrap not implemented yet")
+    if "--serve-stdio" in sys.argv:
+        logger.info("Starting MCP server (stdio)")
+        server = MCPServer(settings)
+        server.serve_stdio()
+        return
+
+    logger.info("Settings loaded. Use --serve-stdio to start MCP transport loop")
 
 
 if __name__ == "__main__":

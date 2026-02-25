@@ -10,12 +10,51 @@ Rules:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Mapping
+from typing import Any, Mapping
 
 
 def _validate_source_path(metadata: Mapping[str, Any]) -> None:
     if "source_path" not in metadata:
         raise ValueError("metadata must contain 'source_path'")
+
+
+def _validate_images_metadata(metadata: Mapping[str, Any]) -> None:
+    images_value = metadata.get("images")
+    if images_value is None:
+        return
+
+    if not isinstance(images_value, list):
+        raise ValueError("metadata.images must be a list")
+
+    required_fields = ("id", "path", "text_offset", "text_length")
+
+    for index, image_ref in enumerate(images_value):
+        if not isinstance(image_ref, dict):
+            raise ValueError(f"metadata.images[{index}] must be a dict with image reference fields")
+
+        for field_name in required_fields:
+            if field_name not in image_ref:
+                raise ValueError(f"metadata.images[{index}] missing required field: '{field_name}'")
+
+        if not isinstance(image_ref["id"], str) or not image_ref["id"].strip():
+            raise ValueError(f"metadata.images[{index}].id must be a non-empty string")
+
+        if not isinstance(image_ref["path"], str) or not image_ref["path"].strip():
+            raise ValueError(f"metadata.images[{index}].path must be a non-empty string")
+
+        if not isinstance(image_ref["text_offset"], int) or image_ref["text_offset"] < 0:
+            raise ValueError(f"metadata.images[{index}].text_offset must be a non-negative integer")
+
+        if not isinstance(image_ref["text_length"], int) or image_ref["text_length"] < 0:
+            raise ValueError(f"metadata.images[{index}].text_length must be a non-negative integer")
+
+        page_value = image_ref.get("page")
+        if page_value is not None and not isinstance(page_value, int):
+            raise ValueError(f"metadata.images[{index}].page must be an integer")
+
+        position_value = image_ref.get("position")
+        if position_value is not None and not isinstance(position_value, dict):
+            raise ValueError(f"metadata.images[{index}].position must be a dict")
 
 
 @dataclass
@@ -28,6 +67,7 @@ class Document:
 
     def __post_init__(self) -> None:
         _validate_source_path(self.metadata)
+        _validate_images_metadata(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +98,7 @@ class Chunk:
 
     def __post_init__(self) -> None:
         _validate_source_path(self.metadata)
+        _validate_images_metadata(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +134,7 @@ class ChunkRecord:
 
     def __post_init__(self) -> None:
         _validate_source_path(self.metadata)
+        _validate_images_metadata(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {

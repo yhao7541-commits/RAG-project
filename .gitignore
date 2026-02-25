@@ -89,6 +89,7 @@ dmypy.json
 data/
 cache/
 logs/
+.sisyphus/
 *.log
 traces.jsonl
 

@@ -1,0 +1,10 @@
+[
+  {
+    "query": "sample document introduction",
+    "ground_truth_ids": ["doc_sample_001_0000_aaaaaaaa"]
+  },
+  {
+    "query": "image description in pdf",
+    "ground_truth_ids": ["doc_image_001_0001_bbbbbbbb"]
+  }
+]

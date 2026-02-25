@@ -5,6 +5,16 @@
 """
 
 from src.libs.vector_store.base_vector_store import BaseVectorStore
+from src.libs.vector_store.chroma_store import ChromaStore, ChromaStoreError
 from src.libs.vector_store.vector_store_factory import VectorStoreFactory
 
-__all__ = ["BaseVectorStore", "VectorStoreFactory"]
+# 模块加载时注册默认 provider，确保上层开箱即用。
+if "chroma" not in VectorStoreFactory._PROVIDERS:
+    VectorStoreFactory.register_provider("chroma", ChromaStore)
+
+__all__ = [
+    "BaseVectorStore",
+    "VectorStoreFactory",
+    "ChromaStore",
+    "ChromaStoreError",
+]

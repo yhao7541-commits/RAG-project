@@ -101,6 +101,30 @@
 
 ---
 
+## 🎓 学习资源与社区
+
+### 📺 配套视频教程
+
+本项目提供**全面的视频讲解**，涵盖：
+- ✅ **RAG 核心技术深度剖析**：从分块策略、混合检索到 Rerank 重排，全面解构 RAG 技术细节
+- ✅ **代码实战逐行讲解**：环境配置、模块实现、性能优化，手把手带你完成项目
+- ✅ **大模型面试真题解析**：精选大厂面试题，结合项目实战讲解答题思路
+- ✅ **转行求职指南**：简历撰写技巧、面试准备策略、职业规划建议
+
+**🎬 获取视频教程与更多资源：**
+
+- 🔍 小红书搜索：**不转到大模型不改名**
+- 🆔 小红书 ID：**4740535877**
+
+### 🎁 额外福利
+
+持续更新中的内容：
+- 📝 **基于本项目的简历模板**：如何将技术亮点写进简历
+- 🎤 **常见面试问题集锦**：针对 RAG 项目的高频面试题及参考答案
+- 💼 **求职经验分享**：从技术学习到拿到 Offer 的完整路径
+
+---
+
 ## 🚀 快速开始
 
 ```bash
@@ -117,6 +141,50 @@ cp .env.example .env
 
 # 运行服务
 python src/main.py
+```
+
+### 数据摄取（Ingestion）
+
+```bash
+# 将 PDF 摄取到向量库
+python ingest.py tests/fixtures/sample_documents/simple.pdf
+```
+
+### 启动 MCP（Stdio）
+
+```bash
+# 启动 MCP Server（供 Copilot/Claude 等客户端通过 stdio 调用）
+python main.py --serve-stdio
+```
+
+### MCP 客户端配置示例
+
+Copilot / 通用 MCP Host（JSON 示例）：
+
+```json
+{
+  "mcpServers": {
+    "modular-rag": {
+      "command": "python",
+      "args": ["main.py", "--serve-stdio"],
+      "cwd": "D:/Dev/MODULAR-RAG-MCP-SERVER"
+    }
+  }
+}
+```
+
+Claude Desktop（JSON 示例）：
+
+```json
+{
+  "mcpServers": {
+    "modular-rag": {
+      "command": "python",
+      "args": ["main.py", "--serve-stdio"],
+      "cwd": "D:/Dev/MODULAR-RAG-MCP-SERVER"
+    }
+  }
+}
 ```
 
 详细的环境配置、部署指南与使用示例请参考 [DEV_SPEC.md](DEV_SPEC.md)。

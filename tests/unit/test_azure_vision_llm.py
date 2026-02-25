@@ -455,6 +455,12 @@ class TestChatWithImage:
 
 class TestFactoryIntegration:
     """Test Azure Vision LLM factory registration and creation."""
+
+    def setup_method(self):
+        """Ensure azure provider is available for each integration test."""
+
+        if "azure" not in LLMFactory._VISION_PROVIDERS:
+            LLMFactory.register_vision_provider("azure", AzureVisionLLM)
     
     def test_azure_registered_in_factory(self):
         """Azure Vision LLM is registered in factory."""

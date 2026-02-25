@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
@@ -16,18 +16,19 @@ class MockLLM(BaseLLM):
     """Mock LLM for testing."""
     
     def __init__(self, response_content: str = "[]"):
+        super().__init__(settings=Mock())
         self.response_content = response_content
         self.call_count = 0
         self.last_messages: Optional[List[Message]] = None
     
     def chat(
         self,
-        messages: List[Message],
+        messages: Sequence[Message],
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResponse:
         self.call_count += 1
-        self.last_messages = messages
+        self.last_messages = list(messages)
         return ChatResponse(
             content=self.response_content,
             model="mock-model",
@@ -386,6 +387,9 @@ class TestLLMRerankerReranking:
         
         # Mock LLM that raises exception
         class FailingLLM(BaseLLM):
+            def __init__(self):
+                super().__init__(settings=Mock())
+
             def chat(self, messages, trace=None, **kwargs):
                 raise RuntimeError("LLM service unavailable")
         

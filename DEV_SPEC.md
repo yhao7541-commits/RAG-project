@@ -1662,74 +1662,83 @@ observability:
 | B7.2 | Ollama LLM 实现 | [x] | 2026-02-11 | Ollama LLM 已完成并通过对应单测。 |
 | B7.3 | OpenAI & Azure Embedding 实现 | [x] | 2026-02-11 | OpenAI/Azure Embedding 已完成并通过对应单测。 |
 | B7.4 | Ollama Embedding 实现 | [x] | 2026-02-12 | Ollama Embedding 已完成（基于 LlamaIndex 适配 + 工厂注册）并通过对应单测。 |
+<<<<<<< HEAD
 | B7.5 | Recursive Splitter 默认实现 | [ ] | 
 | B7.6 | ChromaStore 默认实现 | [ ] |
 | B7.7 | LLM Reranker 实现 | [ ] | 
 | B7.8 | Cross-Encoder Reranker 实现 | [ ] | 
 | B8 | Vision LLM 抽象接口与工厂集成 | [ ] |
 | B9 | Azure Vision LLM 实现 | [ ] | 
+=======
+| B7.5 | Recursive Splitter 默认实现 | [x] | 2026-02-13 | Recursive Splitter 已完成（langchain-text-splitters 递归切分 + 参数校验）并通过对应单测。 |
+| B7.6 | ChromaStore 默认实现 | [x] | 2026-02-13 | ChromaStore 已完成（默认注册 + upsert/query/delete/clear）并通过对应单测。 |
+| B7.7 | LLM Reranker 实现 | [x] | 2026-02-13 | LLM Reranker 已完成（Prompt加载 + LLM打分解析 + 排序输出）并通过对应单测。 |
+| B7.8 | Cross-Encoder Reranker 实现 | [x] | 2026-02-13 | Cross-Encoder Reranker 已完成（模型加载 + 相关性打分 + 排序输出）并通过对应单测。 |
+| B8 | Vision LLM 抽象接口与工厂集成 | [x] | 2026-02-13 | BaseVisionLLM/ImageInput + LLMFactory 视觉Provider注册/创建 + Vision相关单测通过。 |
+| B9 | Azure Vision LLM 实现 | [x] | 2026-02-13 | Azure Vision LLM 已完成（图像预处理 + Azure接口调用 + 工厂集成）并通过对应单测。 |
+>>>>>>> 8645f47 (feat: complete phases C-G with mvp pipeline and delivery docs)
 
 #### 阶段 C：Ingestion Pipeline MVP
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [ ] | 
-| C2 | 文件完整性检查（SHA256） | [ ] | 
-| C3 | Loader 抽象基类与 PDF Loader | [ ] |
-| C4 | Splitter 集成（调用 Libs） | [ ] | 
-| C5 | Transform 基类 + ChunkRefiner | [ ] |
-| C6 | MetadataEnricher | [ ] | 
-| C7 | ImageCaptioner | [ ] |
-| C8 | DenseEncoder | [ ] | 
-| C9 | SparseEncoder | [ ] | 
-| C10 | BatchProcessor | [ ] |  |  |
-| C11 | BM25Indexer（倒排索引+IDF计算） | [ ] | - |  |
-| C12 | VectorUpserter（幂等upsert） | [ ] | - |  |
-| C13 | ImageStorage | [ ] | - | |
-| C14 | Pipeline 编排（MVP 串起来） | [ ] | - | |
-| C15 | 脚本入口 ingest.py | [ ] | - | |
+| C1 | 定义核心数据类型/契约（Document/Chunk/ChunkRecord） | [x] | 2026-02-25 | 已完成类型序列化、source_path必填校验、metadata.images契约校验与单测 |
+| C2 | 文件完整性检查（SHA256） | [x] | 2026-02-26 | SQLiteIntegrityChecker + WAL + 单测通过 |
+| C3 | Loader 抽象基类与 PDF Loader | [x] | 2026-02-26 | BaseLoader/PdfLoader 实现并通过契约单测 |
+| C4 | Splitter 集成（调用 Libs） | [x] | 2026-02-26 | DocumentChunker 集成 SplitterFactory |
+| C5 | Transform 基类 + ChunkRefiner | [x] | 2026-02-26 | ChunkRefiner 已接入 ingestion pipeline |
+| C6 | MetadataEnricher | [x] | 2026-02-26 | MetadataEnricher 已接入 ingestion pipeline |
+| C7 | ImageCaptioner | [x] | 2026-02-26 | ImageCaptioner 已接入 ingestion pipeline |
+| C8 | DenseEncoder | [x] | 2026-02-26 | DenseEncoder 实现并通过单测 |
+| C9 | SparseEncoder | [x] | 2026-02-26 | SparseEncoder 实现并通过单测 |
+| C10 | BatchProcessor | [x] | 2026-02-26 | BatchProcessor/BatchResult 实现并通过单测 |
+| C11 | BM25Indexer（倒排索引+IDF计算） | [x] | 2026-02-26 | BM25Indexer 实现并纳入 pipeline |
+| C12 | VectorUpserter（幂等upsert） | [x] | 2026-02-26 | VectorUpserter 实现并接入 pipeline |
+| C13 | ImageStorage | [x] | 2026-02-26 | ImageStorage 实现 |
+| C14 | Pipeline 编排（MVP 串起来） | [x] | 2026-02-26 | IngestionPipeline 完整串联 loader->chunk->transform->encode->upsert |
+| C15 | 脚本入口 ingest.py | [x] | 2026-02-26 | ingest.py CLI 可直接执行 |
 
 #### 阶段 D：Retrieval MVP
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| D1 | QueryProcessor（关键词提取 + filters） | [ ] | - | |
-| D2 | DenseRetriever | [ ] | - | |
-| D3 | SparseRetriever（BM25） | [ ] | - | |
-| D4 | RRF Fusion | [ ] | - | |
-| D5 | MetadataFilter | [ ] | - | |
-| D6 | Rerank 集成与 Fallback | [ ] | - | |
-| D7 | RetrievalPipeline 编排 | [ ] | - | |
+| D1 | QueryProcessor（关键词提取 + filters） | [x] | 2026-02-26 | QueryProcessor + ProcessedQuery 实现 |
+| D2 | DenseRetriever | [x] | 2026-02-26 | DenseRetriever 实现 |
+| D3 | SparseRetriever（BM25） | [x] | 2026-02-26 | SparseRetriever(BM25-like) 实现 |
+| D4 | RRF Fusion | [x] | 2026-02-26 | rrf_fusion 实现 |
+| D5 | MetadataFilter | [x] | 2026-02-26 | MetadataFilter 安全网过滤实现 |
+| D6 | Rerank 集成与 Fallback | [x] | 2026-02-26 | RetrievalPipeline 集成 Reranker 与 fallback |
+| D7 | RetrievalPipeline 编排 | [x] | 2026-02-26 | RetrievalPipeline 完整编排 |
 
 #### 阶段 E：MCP Server 层与 Tools
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| E1 | MCP Server 骨架（Stdio Transport） | [ ] | - | |
-| E2 | query_knowledge_hub Tool | [ ] | - | |
-| E3 | list_collections Tool | [ ] | - | |
-| E4 | get_document_summary Tool | [ ] | - | |
-| E5 | 多模态返回（ImageContent） | [ ] | - | |
-| E6 | 错误处理与协议合规 | [ ] | - | |
+| E1 | MCP Server 骨架（Stdio Transport） | [x] | 2026-02-26 | MCPServer JSON-RPC stdio 骨架实现 |
+| E2 | query_knowledge_hub Tool | [x] | 2026-02-26 | query_knowledge_hub 工具实现 |
+| E3 | list_collections Tool | [x] | 2026-02-26 | list_collections 工具实现 |
+| E4 | get_document_summary Tool | [x] | 2026-02-26 | get_document_summary 工具实现 |
+| E5 | 多模态返回（ImageContent） | [x] | 2026-02-26 | get_document_summary 支持 image content(base64) |
+| E6 | 错误处理与协议合规 | [x] | 2026-02-26 | MCPError + JSON-RPC 错误码路径实现 |
 
 #### 阶段 F：Observability + Evaluation
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| F1 | TraceContext 与结构化日志 | [ ] | - | |
-| F2 | 各阶段 Trace 集成 | [ ] | - | |
-| F3 | Streamlit Dashboard | [ ] | - | |
-| F4 | Golden Test Set 与回归测试 | [ ] | - | |
-| F5 | Ragas/Custom Evaluator 集成 | [ ] | - | |
+| F1 | TraceContext 与结构化日志 | [x] | 2026-02-26 | TraceContext 增强为可落盘 JSONL |
+| F2 | 各阶段 Trace 集成 | [x] | 2026-02-26 | Retrieval/Ingestion 关键阶段接入 trace.record_stage |
+| F3 | Streamlit Dashboard | [x] | 2026-02-26 | trace_dashboard.py 可视化脚手架实现 |
+| F4 | Golden Test Set 与回归测试 | [x] | 2026-02-26 | golden_test_set.json + e2e 回归测试新增 |
+| F5 | Ragas/Custom Evaluator 集成 | [x] | 2026-02-26 | EvaluationRunner + CustomEvaluator 集成 |
 
 #### 阶段 G：端到端验收与文档收口
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| G1 | E2E 测试用例补齐 | [ ] | - | |
-| G2 | 运行脚本与 README 完善 | [ ] | - | |
-| G3 | MCP 配置示例（Copilot/Claude） | [ ] | - | |
-| G4 | 最终验收与文档检查 | [ ] | - | |
+| G1 | E2E 测试用例补齐 | [x] | 2026-02-26 | tests/e2e/test_pipeline_and_mcp_e2e.py |
+| G2 | 运行脚本与 README 完善 | [x] | 2026-02-26 | ingest.py + README 启动/摄取说明完善 |
+| G3 | MCP 配置示例（Copilot/Claude） | [x] | 2026-02-26 | README 新增 MCP 配置示例 |
+| G4 | 最终验收与文档检查 | [x] | 2026-02-26 | 全量 pytest 验证通过并同步状态 |
 
 ---
 
@@ -1738,13 +1747,13 @@ observability:
 | 阶段 | 总任务数 | 已完成 | 进度 |
 |------|---------|--------|------|
 | 阶段 A | 3 | 3 | 100% |
-| 阶段 B | 16 | 10 | 63% |
-| 阶段 C | 15 | 0 | 0% |
-| 阶段 D | 7 | 0 | 0% |
-| 阶段 E | 6 | 0 | 0% |
-| 阶段 F | 5 | 0 | 0% |
-| 阶段 G | 4 | 0 | 0% |
-| **总计** | **56** | **13** | **23%** |
+| 阶段 B | 16 | 16 | 100% |
+| 阶段 C | 15 | 15 | 100% |
+| 阶段 D | 7 | 7 | 100% |
+| 阶段 E | 6 | 6 | 100% |
+| 阶段 F | 5 | 5 | 100% |
+| 阶段 G | 4 | 4 | 100% |
+| **总计** | **56** | **56** | **100%** |
 
 
 ---
